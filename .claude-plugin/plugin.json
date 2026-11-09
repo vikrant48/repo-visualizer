@@ -1,0 +1,14 @@
+{
+  "name": "repo-visualizer",
+  "displayName": "Repo Visualizer",
+  "version": "0.1.0",
+  "description": "Analyzes your codebase and generates an interactive HTML page showing the full request journey (gateway, middleware, services, cache, database/queue, response) and how services connect.",
+  "author": {
+    "name": "Vikrant Chauhan",
+    "url": "https://github.com/vikrant48"
+  },
+  "homepage": "https://github.com/vikrant48/repo-visualizer",
+  "repository": "https://github.com/vikrant48/repo-visualizer",
+  "license": "MIT",
+  "keywords": ["visualization", "architecture", "diagram", "request-flow", "documentation"]
+}
