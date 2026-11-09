@@ -73,12 +73,15 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;backgro
 
 /* overview */
 #cy{flex:1;min-height:320px;background:var(--bg)}
-.legend{position:absolute;left:14px;bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);max-width:230px;z-index:5}
-.legend h4{margin:0 0 4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.legend{display:block}
+.lrow{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0}
+.legend ul{margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px}
+.legend li{margin:3px 0}
+.legend h4{margin:10px 0 4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .legend button{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;padding:2px 0;font-size:12.5px;text-align:left}
 .legend button[aria-pressed="false"]{opacity:.4;text-decoration:line-through}
 .legend svg{flex:none}
-.legend .sep{border-top:1px solid var(--border);margin:6px 0}
+.legend .sep{border-top:1px solid var(--border);margin:10px 0 2px}
 
 /* journey */
 .jwrap{overflow-x:auto;background:var(--bg);border-bottom:1px solid var(--border);flex:none}
@@ -150,6 +153,11 @@ aside{border-left:1px solid var(--border);background:var(--surface);display:flex
 .stabs{display:flex;border-bottom:1px solid var(--border)}
 .stab{flex:1;border:0;background:none;padding:10px;font-weight:550;color:var(--muted);border-bottom:2px solid transparent}
 .stab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.sclose{flex:none;width:40px;border:0;background:none;color:var(--muted);font-size:18px;line-height:1}
+.sclose:hover{color:var(--text)}
+.btn[aria-pressed="true"]{background:var(--surface2)}
+.app.noside{grid-template-columns:minmax(0,1fr)}
+.app.noside aside{display:none}
 .badge{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;padding:0 5px;margin-left:5px}
 :root[data-theme="dark"] .badge{color:#1a1200}
 .spanel{display:none;overflow:auto;padding:16px;flex:1;min-height:0}
@@ -173,6 +181,7 @@ aside{border-left:1px solid var(--border);background:var(--surface);display:flex
 
 @media (max-width:980px){
   .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 42vh}
+  .app.noside{grid-template-rows:minmax(0,1fr)}
   aside{border-left:0;border-top:1px solid var(--border)}
   .search{width:34vw}
   .jlower{grid-template-columns:1fr;overflow:auto}
@@ -193,6 +202,7 @@ aside{border-left:1px solid var(--border);background:var(--surface);display:flex
     <input id="search" type="search" placeholder="Search components, edges, steps  ( / )" aria-label="Search" autocomplete="off">
     <div id="results" class="results" hidden></div>
   </div>
+  <button id="panelBtn" class="btn" type="button" aria-pressed="true" title="Show or hide the side panel">Panel</button>
   <button id="themeBtn" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
 </header>
 <nav class="tabs" role="tablist" aria-label="Views">
@@ -206,14 +216,16 @@ aside{border-left:1px solid var(--border);background:var(--surface);display:flex
   <section id="view-overview" class="view on" role="tabpanel" aria-labelledby="tab-overview">
     <div class="bar">
       <button class="btn" id="fitBtn" type="button">Fit</button>
+      <button class="btn" id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
+      <button class="btn" id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">+</button>
       <button class="btn" id="relayoutBtn" type="button">Re-layout</button>
+      <button class="btn" id="expandBtn" type="button" title="Hide the side panel to give the graph the full width">Expand graph</button>
       <label class="check"><input type="checkbox" id="optLabels" checked> Edge labels</label>
       <label class="check"><input type="checkbox" id="optUncertain" checked> Show uncertain</label>
       <span class="spacer"></span>
       <span class="hint" id="ovCount"></span>
     </div>
     <div id="cy" role="img" aria-label="Architecture overview map"></div>
-    <div class="legend" id="legend"></div>
   </section>
 
   <div id="flowBar" class="bar" hidden>
@@ -248,10 +260,13 @@ aside{border-left:1px solid var(--border);background:var(--surface);display:flex
 
 <aside>
   <div class="stabs" role="tablist">
-    <button class="stab" role="tab" id="stab-details" data-panel="details" aria-selected="true">Details</button>
+    <button class="stab" role="tab" id="stab-legend" data-panel="legend" aria-selected="true">Legend</button>
+    <button class="stab" role="tab" id="stab-details" data-panel="details" aria-selected="false">Details</button>
     <button class="stab" role="tab" id="stab-unc" data-panel="unc" aria-selected="false">Uncertain<span class="badge" id="uncBadge">0</span></button>
+    <button class="sclose" id="panelClose" type="button" aria-label="Close side panel" title="Close panel">&#10005;</button>
   </div>
-  <div class="spanel on" id="panel-details"></div>
+  <div class="spanel on" id="panel-legend"></div>
+  <div class="spanel" id="panel-details"></div>
   <div class="spanel" id="panel-unc"></div>
 </aside>
 </div>
@@ -337,7 +352,7 @@ const typeColor = t => cssVar('--c-' + (TYPES[t] ? t : 'unknown')) || '#888';
 /* ------------------------------------------------------------------ state */
 const state = {
   view: 'overview', flowId: flows.length ? flows[0].id : null, branchId: null, cur: 0,
-  sel: null, query: '', hidden: new Set(), showUnc: true, labels: true, theme: 'light'
+  sel: null, query: '', hidden: new Set(), showUnc: true, labels: true, theme: 'light', panelOpen: true
 };
 
 /* ------------------------------------------------------------------ theme */
@@ -349,6 +364,7 @@ function setTheme(t, persist) {
   $('#themeBtn').innerHTML = t === 'dark' ? SUN : MOON;
   if (persist) store('repo-visualizer-theme', t);
   if (cy) { styleCy(); }
+  renderLegend();
   if (state.view === 'sequence') renderSequence();
   syncHash();
 }
@@ -381,16 +397,36 @@ function field(title, body) { return h('div', { class: 'field' }, h('h5', { text
 function linkBtn(text, fn) { return h('li', null, h('button', { type: 'button', onclick: fn, text })); }
 
 function showPanel(which) {
-  $('#stab-details').setAttribute('aria-selected', which === 'details');
-  $('#stab-unc').setAttribute('aria-selected', which === 'unc');
-  $('#panel-details').classList.toggle('on', which === 'details');
-  $('#panel-unc').classList.toggle('on', which === 'unc');
+  ['legend', 'details', 'unc'].forEach(k => {
+    $('#stab-' + k).setAttribute('aria-selected', String(which === k));
+    $('#panel-' + k).classList.toggle('on', which === k);
+  });
 }
 $$('.stab').forEach(b => b.addEventListener('click', () => showPanel(b.dataset.panel)));
+
+/* side panel: open by default (Legend tab), can be closed so the graph uses the full width */
+function refit(keepView) {
+  if (state.view === 'overview' && cy) { cy.resize(); if (!keepView) cy.fit(undefined, 20); }
+  else if (state.view === 'journey') renderJourney(true);
+}
+function setPanelOpen(open, opts) {
+  opts = opts || {};
+  state.panelOpen = open;
+  $('.app').classList.toggle('noside', !open);
+  $('#panelBtn').setAttribute('aria-pressed', String(open));
+  $('#expandBtn').textContent = open ? 'Expand graph' : 'Show panel';
+  if (opts.persist !== false) store('repo-visualizer-panel', open ? 'open' : 'closed');
+  setTimeout(() => refit(opts.fit === false), 60);
+  syncHash();
+}
+$('#panelBtn').addEventListener('click', () => setPanelOpen(!state.panelOpen));
+$('#expandBtn').addEventListener('click', () => setPanelOpen(!state.panelOpen));
+$('#panelClose').addEventListener('click', () => setPanelOpen(false));
 
 function inspect(kind, id, extra) {
   state.sel = { kind, id };
   const p = clear($('#panel-details'));
+  if (!state.panelOpen) setPanelOpen(true, { fit: false, persist: false });
   showPanel('details');
   if (kind === 'node') {
     const n = nodeById[id]; if (!n) return;
@@ -669,6 +705,9 @@ function styleCy() {
   cy.style().fromJson(st).update();
 }
 $('#fitBtn').addEventListener('click', () => { if (cy) cy.fit(undefined, 30); });
+const zoomBy = f => { if (cy) cy.zoom({ level: cy.zoom() * f, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }); };
+$('#zoomIn').addEventListener('click', () => zoomBy(1.25));
+$('#zoomOut').addEventListener('click', () => zoomBy(0.8));
 $('#relayoutBtn').addEventListener('click', () => { if (cy) { cy.elements().removeClass('dim hl'); runLayout(); } });
 $('#optLabels').addEventListener('change', e => { state.labels = e.target.checked; styleCy(); });
 $('#optUncertain').addEventListener('change', e => { state.showUnc = e.target.checked; buildOverview(); });
@@ -691,17 +730,28 @@ function shapeIcon(shape, color) {
   }
   return sv;
 }
+function lineSample(color, dash, w) {
+  return s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' }, s('line', { x1: 1, y1: 8, x2: 21, y2: 8, stroke: color, 'stroke-width': w || 2, 'stroke-dasharray': dash || null }));
+}
 function renderLegend() {
-  const lg = clear($('#legend'));
+  const p = clear($('#panel-legend'));
+  const lg = h('div', { class: 'legend' });
   const present = Object.keys(TYPES).filter(t => nodes.some(n => n.type === t));
-  lg.append(h('h4', { text: 'Legend (click to hide)' }));
+  p.append(h('h2', { text: 'Legend' }), lg);
+  lg.append(h('h4', { text: 'Components (click to show or hide)' }));
   present.forEach(t => lg.append(h('button', { type: 'button', 'aria-pressed': String(!state.hidden.has(t)), onclick: () => { if (state.hidden.has(t)) state.hidden.delete(t); else state.hidden.add(t); buildOverview(); } },
     shapeIcon(TYPES[t].shape, typeColor(t)), TYPES[t].label)));
-  lg.append(h('div', { class: 'sep' }));
-  const dash = s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' }, s('line', { x1: 1, y1: 8, x2: 21, y2: 8, stroke: cssVar('--warn'), 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
-  lg.append(h('div', { style: 'display:flex;gap:8px;align-items:center;font-size:12.5px' }, dash, 'Unconfirmed link'));
-  const dot = s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' }, s('line', { x1: 1, y1: 8, x2: 21, y2: 8, stroke: cssVar('--c-middleware'), 'stroke-width': 1.5, 'stroke-dasharray': '3 2' }));
-  if (nodes.some(n => n.type === 'middleware')) lg.append(h('div', { style: 'display:flex;gap:8px;align-items:center;font-size:12.5px;margin-top:2px' }, dot, 'Security layer'));
+  lg.append(h('div', { class: 'sep' }), h('h4', { text: 'Lines' }));
+  lg.append(h('div', { class: 'lrow' }, lineSample(cssVar('--req')), 'Request path (journey)'));
+  lg.append(h('div', { class: 'lrow' }, lineSample(cssVar('--res')), 'Response path (journey)'));
+  lg.append(h('div', { class: 'lrow' }, lineSample(cssVar('--warn'), '4 3'), 'Unconfirmed link'));
+  if (nodes.some(n => n.type === 'middleware')) lg.append(h('div', { class: 'lrow' }, lineSample(cssVar('--c-middleware'), '3 2', 1.5), 'Security layer (middleware)'));
+  lg.append(h('div', { class: 'sep' }), h('h4', { text: 'How to read this' }),
+    h('ul', null,
+      h('li', { text: 'Click a component or line to see what it does and its file:line evidence.' }),
+      h('li', { text: 'Overview: drag to move, scroll to zoom. Use Expand graph for full width.' }),
+      h('li', { text: 'Request journey: pick a flow and step through it. Left/right arrow keys also work.' }),
+      h('li', { text: 'Press / to search.' })));
 }
 
 /* ------------------------------------------------------------------ JOURNEY (custom SVG) */
@@ -916,7 +966,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'ArrowLeft') { jumpTo(state.cur - 1, true); ev.preventDefault(); }
 });
 let rz = 0;
-window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (state.view === 'journey') renderJourney(true); if (cy && state.view === 'overview') { cy.resize(); } }, 200); });
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { refit(true); }, 200); });
 
 /* ------------------------------------------------------------------ SEQUENCE (Mermaid) */
 let seqN = 0;
@@ -1044,6 +1094,7 @@ function syncHash() {
     const p = ['view=' + state.view];
     if (state.flowId && state.view !== 'overview') { p.push('flow=' + encodeURIComponent(state.flowId)); if (state.branchId) p.push('branch=' + encodeURIComponent(state.branchId)); if (state.view === 'journey') p.push('step=' + (state.cur + 1)); }
     p.push('theme=' + state.theme);
+    if (!state.panelOpen) p.push('panel=closed');
     history.replaceState(null, '', '#' + p.join('&'));
   } catch (e) { /* ignore */ }
 }
@@ -1065,6 +1116,8 @@ if (hp.branch) { const f = currentFlow(); if (f && (f.branches || []).some(b => 
 if (hp.step) state.cur = Math.max(0, (parseInt(hp.step, 10) || 1) - 1);
 fillFlowBar();
 inspectInitial();
+showPanel('legend');
+if (hp.panel === 'closed' || (!hp.panel && store('repo-visualizer-panel') === 'closed')) setPanelOpen(false, { persist: false });
 setView(['overview', 'journey', 'sequence'].indexOf(hp.view) >= 0 ? hp.view : 'overview');
 function inspectInitial() {
   const p = $('#panel-details');
