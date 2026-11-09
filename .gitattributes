@@ -1,0 +1,3 @@
+# Keep LF line endings on every platform (SKILL.md frontmatter, scripts, template)
+* text=auto eol=lf
+*.png binary
