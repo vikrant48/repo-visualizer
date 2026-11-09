@@ -1,0 +1,16 @@
+# Output of running the plugin on this repo itself
+/architecture.json
+/architecture.html
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude Code local settings
+.claude/settings.local.json

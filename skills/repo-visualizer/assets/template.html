@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Architecture</title>
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --surface2:#eff1f5; --border:#dde1e7; --text:#1a2230; --muted:#5a6677;
+  --accent:#2563eb; --req:#2563eb; --res:#ea580c; --warn:#b45309; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06);
+  --c-user:#475569; --c-frontend:#0284c7; --c-gateway:#7c3aed; --c-middleware:#b45309; --c-service:#2563eb;
+  --c-database:#047857; --c-cache:#dc2626; --c-queue:#a21caf; --c-external-api:#0f766e; --c-storage:#be185d; --c-unknown:#6b7280;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0d1117; --surface:#151b23; --surface2:#1c242e; --border:#2a3340; --text:#e6edf3; --muted:#9ba8b8;
+  --accent:#60a5fa; --req:#60a5fa; --res:#fb923c; --warn:#fbbf24; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+  --c-user:#94a3b8; --c-frontend:#38bdf8; --c-gateway:#a78bfa; --c-middleware:#fbbf24; --c-service:#60a5fa;
+  --c-database:#34d399; --c-cache:#f87171; --c-queue:#e879f9; --c-external-api:#2dd4bf; --c-storage:#f472b6; --c-unknown:#9ca3af;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 var(--sans);display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code,.mono{font-family:var(--mono);font-size:12px}
+
+/* header */
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.brand{min-width:0;flex:1}
+.brand h1{margin:0;font-size:16px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand p{margin:0;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search{position:relative;width:min(380px,40vw)}
+.search input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text)}
+.results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);max-height:360px;overflow:auto;z-index:50}
+.results button{display:flex;gap:8px;width:100%;text-align:left;padding:8px 12px;border:0;background:none;align-items:baseline}
+.results button:hover,.results button.on{background:var(--surface2)}
+.results .rk{font-size:11px;color:var(--muted);min-width:46px;text-transform:uppercase;letter-spacing:.04em}
+.results .none{padding:10px 12px;color:var(--muted)}
+.icon-btn{border:1px solid var(--border);background:var(--surface2);border-radius:8px;width:36px;height:36px;display:grid;place-items:center}
+.icon-btn:hover{border-color:var(--accent)}
+
+/* tabs */
+.tabs{display:flex;gap:4px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab{border:0;background:none;padding:11px 14px;font-weight:550;color:var(--muted);border-bottom:2px solid transparent}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+
+/* app */
+.app{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px}
+main{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.bar label{color:var(--muted);font-size:12.5px}
+select{padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);max-width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--border);background:var(--surface2);border-radius:999px;padding:4px 11px;font-size:12.5px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .chip[aria-pressed="true"]{color:#0b1220}
+.btn{border:1px solid var(--border);background:var(--surface2);border-radius:8px;padding:6px 12px}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0b1220}
+.spacer{flex:1}
+.check{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12.5px}
+
+/* overview */
+#cy{flex:1;min-height:320px;background:var(--bg)}
+.legend{position:absolute;left:14px;bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);max-width:230px;z-index:5}
+.legend h4{margin:0 0 4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.legend button{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;padding:2px 0;font-size:12.5px;text-align:left}
+.legend button[aria-pressed="false"]{opacity:.4;text-decoration:line-through}
+.legend svg{flex:none}
+.legend .sep{border-top:1px solid var(--border);margin:6px 0}
+
+/* journey */
+.jwrap{overflow-x:auto;background:var(--bg);border-bottom:1px solid var(--border);flex:none}
+#jsvg{display:block}
+.jbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.counter{font-variant-numeric:tabular-nums;color:var(--muted);min-width:92px;text-align:center}
+.key{display:flex;gap:12px;align-items:center;color:var(--muted);font-size:12.5px}
+.key i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.jlower{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,320px) minmax(0,1fr);gap:0;overflow:hidden}
+.steps{overflow:auto;border-right:1px solid var(--border);background:var(--surface)}
+.steps ol{list-style:none;margin:0;padding:6px}
+.steps li button{display:grid;grid-template-columns:24px 1fr;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:7px 8px;border-left:3px solid transparent}
+.steps li button:hover{background:var(--surface2)}
+.steps li button[aria-current="step"]{background:var(--surface2);border-left-color:var(--req)}
+.steps li button.res[aria-current="step"]{border-left-color:var(--res)}
+.steps .n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;padding-top:1px}
+.steps .t{font-size:13px}
+.steps .t small{display:block;color:var(--muted);font-size:12px}
+.steps li.future button{opacity:.55}
+.steps li.match button{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.bdg{display:inline-block;font-size:11px;padding:0 6px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-left:4px}
+.card{overflow:auto;padding:16px 20px;background:var(--surface)}
+.card h3{margin:0 0 2px;font-size:16px}
+.card .meta{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:var(--surface2)}
+.tag.req{color:var(--req);border-color:currentColor;background:none}
+.tag.res{color:var(--res);border-color:currentColor;background:none}
+.field{margin:10px 0}
+.field h5{margin:0 0 3px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.field p{margin:0}
+.note{padding:8px 12px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin:10px 0}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+
+/* svg (journey) */
+.jn rect{fill:var(--surface);stroke-width:1.6;transition:opacity .2s}
+.jn text{fill:var(--text);font:600 12px var(--sans);pointer-events:none}
+.jn text.sub{fill:var(--muted);font:11px var(--sans)}
+.jn{cursor:pointer}
+.jn.idle{opacity:.4}
+.jn.active rect{stroke-width:3.2}
+.jn.match rect{stroke-dasharray:5 3}
+.jp{fill:none;stroke-width:2.2;stroke-linecap:round;cursor:pointer;transition:opacity .2s}
+.jp.request{stroke:var(--req)} .jp.response{stroke:var(--res)}
+.jp.future{opacity:.22;stroke-dasharray:4 5}
+.jp.visited{opacity:.85}
+.jp.current{opacity:1;stroke-width:3.4}
+.jb circle{stroke-width:1.5;fill:var(--surface);cursor:pointer}
+.jb.request circle{stroke:var(--req)} .jb.response circle{stroke:var(--res)}
+.jb text{font:700 10.5px var(--sans);fill:var(--text);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.jb.future{opacity:.4}
+.dot{stroke:var(--surface);stroke-width:2.5}
+.dot.request{fill:var(--req)} .dot.response{fill:var(--res)}
+.halo{opacity:.25}
+.halo.request{fill:var(--req)} .halo.response{fill:var(--res)}
+#arrReq{fill:var(--req)} #arrRes{fill:var(--res)}
+.lane{fill:var(--muted);font:600 10.5px var(--sans);letter-spacing:.06em;opacity:.8}
+
+/* sequence */
+#seqwrap{flex:1;min-height:0;overflow:auto;padding:16px;background:var(--surface)}
+#seq svg{height:auto}
+#seq .messageText,#seq .messageLine0,#seq .messageLine1,#seq rect.actor,#seq text.actor{cursor:pointer}
+#seq .msel{stroke-width:3px!important}
+.seqfallback{max-width:760px;margin:0 auto}
+.seqfallback ol{padding-left:22px}
+.seqfallback li{margin:6px 0}
+
+/* sidebar */
+aside{border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0;min-width:0}
+.stabs{display:flex;border-bottom:1px solid var(--border)}
+.stab{flex:1;border:0;background:none;padding:10px;font-weight:550;color:var(--muted);border-bottom:2px solid transparent}
+.stab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.badge{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:9px;background:var(--warn);color:#fff;font-size:11px;padding:0 5px;margin-left:5px}
+:root[data-theme="dark"] .badge{color:#1a1200}
+.spanel{display:none;overflow:auto;padding:16px;flex:1;min-height:0}
+.spanel.on{display:block}
+.spanel h2{margin:0 0 4px;font-size:16px;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.ev{list-style:none;margin:4px 0 0;padding:0}
+.ev li{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:8px;margin:4px 0;background:var(--surface2)}
+.ev code{overflow-wrap:anywhere}
+.ev .nt{color:var(--muted);font-size:12px;flex-basis:100%}
+.copy{margin-left:auto;border:1px solid var(--border);background:var(--surface);border-radius:6px;font-size:11px;padding:1px 7px}
+.linklist{list-style:none;margin:4px 0;padding:0}
+.linklist button{border:0;background:none;color:var(--accent);padding:2px 0;text-align:left;overflow-wrap:anywhere}
+.linklist button:hover{text-decoration:underline}
+.ucard{border:1px dashed var(--warn);border-radius:10px;padding:10px 12px;margin:10px 0;background:var(--surface2)}
+.ucard h3{margin:0 0 4px;font-size:13.5px;overflow-wrap:anywhere}
+.ucard p{margin:4px 0;font-size:13px}
+.hint{color:var(--muted);font-size:13px}
+
+@media (max-width:980px){
+  .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 42vh}
+  aside{border-left:0;border-top:1px solid var(--border)}
+  .search{width:34vw}
+  .jlower{grid-template-columns:1fr;overflow:auto}
+  .steps{max-height:200px;border-right:0;border-bottom:1px solid var(--border)}
+}
+@media (max-width:560px){
+  .brand p{display:none}
+  .search{width:44vw}
+  .tab{padding:10px 9px;font-size:13px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><h1 id="projName">Architecture</h1><p id="projSummary"></p></div>
+  <div class="search">
+    <input id="search" type="search" placeholder="Search components, edges, steps  ( / )" aria-label="Search" autocomplete="off">
+    <div id="results" class="results" hidden></div>
+  </div>
+  <button id="themeBtn" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode"></button>
+</header>
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-selected="true">Overview map</button>
+  <button class="tab" role="tab" id="tab-journey" data-view="journey" aria-selected="false">Request journey</button>
+  <button class="tab" role="tab" id="tab-sequence" data-view="sequence" aria-selected="false">Sequence diagram</button>
+</nav>
+
+<div class="app">
+<main>
+  <section id="view-overview" class="view on" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="bar">
+      <button class="btn" id="fitBtn" type="button">Fit</button>
+      <button class="btn" id="relayoutBtn" type="button">Re-layout</button>
+      <label class="check"><input type="checkbox" id="optLabels" checked> Edge labels</label>
+      <label class="check"><input type="checkbox" id="optUncertain" checked> Show uncertain</label>
+      <span class="spacer"></span>
+      <span class="hint" id="ovCount"></span>
+    </div>
+    <div id="cy" role="img" aria-label="Architecture overview map"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <div id="flowBar" class="bar" hidden>
+    <label for="flowSel">Flow</label>
+    <select id="flowSel"></select>
+    <span class="chips" id="branchChips" role="group" aria-label="Path variant"></span>
+  </div>
+
+  <section id="view-journey" class="view" role="tabpanel" aria-labelledby="tab-journey">
+    <div class="jwrap" id="jwrap"><svg id="jsvg" role="img" aria-label="Request journey"></svg></div>
+    <div class="jbar">
+      <button class="btn" id="jReset" type="button" title="Back to start">&#8634; Reset</button>
+      <button class="btn" id="jPrev" type="button" title="Previous step (Left arrow)">&#9664; Prev</button>
+      <button class="btn primary" id="jPlay" type="button">&#9654; Play</button>
+      <button class="btn" id="jNext" type="button" title="Next step (Right arrow)">Next &#9654;</button>
+      <span class="counter" id="jCount"></span>
+      <label for="jSpeed" class="hint">Speed</label>
+      <select id="jSpeed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option></select>
+      <span class="spacer"></span>
+      <span class="key"><span><i style="background:var(--req)"></i>Request</span><span><i style="background:var(--res)"></i>Response</span></span>
+    </div>
+    <div class="jlower">
+      <div class="steps" id="stepList" aria-label="Steps"></div>
+      <div class="card" id="stepCard" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section id="view-sequence" class="view" role="tabpanel" aria-labelledby="tab-sequence">
+    <div id="seqwrap"><div id="seq"></div></div>
+  </section>
+</main>
+
+<aside>
+  <div class="stabs" role="tablist">
+    <button class="stab" role="tab" id="stab-details" data-panel="details" aria-selected="true">Details</button>
+    <button class="stab" role="tab" id="stab-unc" data-panel="unc" aria-selected="false">Uncertain<span class="badge" id="uncBadge">0</span></button>
+  </div>
+  <div class="spanel on" id="panel-details"></div>
+  <div class="spanel" id="panel-unc"></div>
+</aside>
+</div>
+
+<!-- Data is injected by scripts/render.py. It replaces the token below with the JSON (with "</" escaped). -->
+<script id="arch-data" type="application/json">__ARCHITECTURE_JSON__</script>
+
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js" integrity="sha384-IWROdLKRsN1UuJywMlWl7/blXQ8GEooN2n7dzTxfEPd7ybYIKCUJ2Ol/1Gpf3YV4" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js" integrity="sha384-KO35c6PFq7tFxAEx6FtATwL9vOBOmCzQYr7GM0iTr3oO22s7Jc9OkclOH4AV7jwK" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-elk@2.2.0/dist/cytoscape-elk.js" integrity="sha384-2kn1Dn9ABocPd1Sy3vo1Df4fl4mW7zyR9V15SruidezT1rmZL5i8b/BAFMBNddKT" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js" integrity="sha384-WmdflGW9aGfoBdHc4rRyWzYuAjEmDwMdGdiPNacbwfGKxBW/SO6guzuQ76qjnSlr" crossorigin="anonymous"></script>
+
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------ helpers */
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const SVGNS = 'http://www.w3.org/2000/svg';
+function h(tag, attrs, ...kids) { return build(document.createElement(tag), attrs, kids); }
+function s(tag, attrs, ...kids) { return build(document.createElementNS(SVGNS, tag), attrs, kids); }
+function build(e, attrs, kids) {
+  if (attrs) for (const k of Object.keys(attrs)) {
+    const v = attrs[k];
+    if (v === false || v == null) continue;
+    if (k === 'class') e.setAttribute('class', v);
+    else if (k === 'text') e.textContent = v;
+    else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); return e; }
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function trunc(t, n) { t = String(t == null ? '' : t); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+function mix(a, b, t) { // hex mix, t = share of a
+  const p = x => { x = x.replace('#', ''); if (x.length === 3) x = x.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(x.substr(i, 2), 16)); };
+  const A = p(a), B = p(b);
+  return '#' + A.map((v, i) => Math.round(v * t + B[i] * (1 - t)).toString(16).padStart(2, '0')).join('');
+}
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+/* ------------------------------------------------------------------ data */
+let DATA = null;
+try {
+  DATA = JSON.parse($('#arch-data').textContent);
+} catch (e) { DATA = null; }
+if (!DATA || typeof DATA !== 'object' || !Array.isArray(DATA.nodes)) {
+  document.body.innerHTML = '';
+  document.body.append(h('div', { class: 'empty', style: 'margin:auto;max-width:520px' },
+    h('h2', { text: 'No architecture data' }),
+    h('p', { text: 'This is the raw template. Run scripts/render.py on an architecture.json to generate architecture.html.' })));
+  return;
+}
+const project = DATA.project || {};
+const nodes = DATA.nodes || [];
+const edges = (DATA.edges || []).map((e, i) => Object.assign({ _id: 'e' + i }, e));
+const flows = DATA.flows || [];
+const uncertain = (DATA.uncertain || []).map((u, i) => Object.assign({ _id: 'u' + i }, u));
+const meta = DATA.meta || {};
+const nodeById = {}; nodes.forEach(n => { nodeById[n.id] = n; });
+const edgeById = {}; edges.forEach(e => { edgeById[e._id] = e; });
+const nm = id => (nodeById[id] ? nodeById[id].name : id);
+
+const TYPES = {
+  'user':        { label: 'User',         shape: 'ellipse' },
+  'frontend':    { label: 'Frontend',     shape: 'round-tag' },
+  'gateway':     { label: 'Gateway',      shape: 'hexagon' },
+  'middleware':  { label: 'Middleware',   shape: 'cut-rectangle' },
+  'service':     { label: 'Service',      shape: 'round-rectangle' },
+  'database':    { label: 'Database',     shape: 'barrel' },
+  'cache':       { label: 'Cache',        shape: 'round-diamond' },
+  'queue':       { label: 'Queue',        shape: 'rhomboid' },
+  'external-api':{ label: 'External API', shape: 'octagon' },
+  'storage':     { label: 'Storage',      shape: 'round-pentagon' },
+  'unknown':     { label: 'Unconfirmed',  shape: 'round-rectangle' }
+};
+const typeColor = t => cssVar('--c-' + (TYPES[t] ? t : 'unknown')) || '#888';
+
+/* ------------------------------------------------------------------ state */
+const state = {
+  view: 'overview', flowId: flows.length ? flows[0].id : null, branchId: null, cur: 0,
+  sel: null, query: '', hidden: new Set(), showUnc: true, labels: true, theme: 'light'
+};
+
+/* ------------------------------------------------------------------ theme */
+const SUN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+function setTheme(t, persist) {
+  state.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  $('#themeBtn').innerHTML = t === 'dark' ? SUN : MOON;
+  if (persist) store('repo-visualizer-theme', t);
+  if (cy) { styleCy(); }
+  if (state.view === 'sequence') renderSequence();
+  syncHash();
+}
+$('#themeBtn').addEventListener('click', () => setTheme(state.theme === 'dark' ? 'light' : 'dark', true));
+
+/* ------------------------------------------------------------------ evidence + inspector */
+function evidenceList(ev) {
+  if (!ev || !ev.length) return h('p', { class: 'hint', text: 'No evidence recorded.' });
+  return h('ul', { class: 'ev' }, ev.map(x => {
+    const ref = x.file + (x.line != null ? ':' + x.line : '');
+    return h('li', null,
+      h('code', { text: ref }),
+      h('button', { class: 'copy', type: 'button', title: 'Copy file:line', onclick: ev2 => copyText(ref, ev2.currentTarget) }, 'Copy'),
+      x.note ? h('span', { class: 'nt', text: x.note }) : null);
+  }));
+}
+function copyText(t, btn) {
+  const done = () => { const o = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = o; }, 1100); };
+  try { navigator.clipboard.writeText(t).then(done, fallback); } catch (e) { fallback(); }
+  function fallback() {
+    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = t; document.body.append(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* ignore */ } ta.remove();
+  }
+}
+function typeTag(n) {
+  return h('span', { class: 'tag', style: 'border-color:' + typeColor(n.type) + ';color:' + typeColor(n.type) },
+    (TYPES[n.type] || { label: n.type }).label + (n.category ? ' · ' + n.category : ''));
+}
+function field(title, body) { return h('div', { class: 'field' }, h('h5', { text: title }), typeof body === 'string' ? h('p', { text: body }) : body); }
+function linkBtn(text, fn) { return h('li', null, h('button', { type: 'button', onclick: fn, text })); }
+
+function showPanel(which) {
+  $('#stab-details').setAttribute('aria-selected', which === 'details');
+  $('#stab-unc').setAttribute('aria-selected', which === 'unc');
+  $('#panel-details').classList.toggle('on', which === 'details');
+  $('#panel-unc').classList.toggle('on', which === 'unc');
+}
+$$('.stab').forEach(b => b.addEventListener('click', () => showPanel(b.dataset.panel)));
+
+function inspect(kind, id, extra) {
+  state.sel = { kind, id };
+  const p = clear($('#panel-details'));
+  showPanel('details');
+  if (kind === 'node') {
+    const n = nodeById[id]; if (!n) return;
+    p.append(h('h2', { text: n.name }), h('div', { class: 'meta', style: 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0' }, typeTag(n), n.tech ? h('span', { class: 'tag', text: n.tech }) : null));
+    p.append(field('What it does', n.description || '—'));
+    p.append(field('Evidence', evidenceList(n.evidence)));
+    const out = edges.filter(e => e.source === id), inc = edges.filter(e => e.target === id);
+    if (out.length || inc.length) {
+      const ul = h('ul', { class: 'linklist' });
+      out.forEach(e => ul.append(linkBtn('→ ' + nm(e.target) + '  (' + e.kind + (e.label ? ': ' + e.label : '') + ')', () => selectEdge(e._id))));
+      inc.forEach(e => ul.append(linkBtn('← ' + nm(e.source) + '  (' + e.kind + (e.label ? ': ' + e.label : '') + ')', () => selectEdge(e._id))));
+      p.append(field('Connections', ul));
+    }
+    const fl = flows.filter(f => flowNodeIds(f).has(id));
+    if (fl.length) {
+      const ul = h('ul', { class: 'linklist' });
+      fl.forEach(f => ul.append(linkBtn(f.name, () => openFlow(f.id, 'journey'))));
+      p.append(field('Appears in flows', ul));
+    }
+  } else if (kind === 'edge') {
+    const e = edgeById[id]; if (!e) return;
+    p.append(h('h2', { text: nm(e.source) + ' → ' + nm(e.target) }),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0' }, h('span', { class: 'tag', text: e.kind })));
+    p.append(field('Label', e.label || '—'));
+    p.append(field('Evidence', evidenceList(e.evidence)));
+    const ul = h('ul', { class: 'linklist' });
+    ul.append(linkBtn('Source: ' + nm(e.source), () => selectNode(e.source)));
+    ul.append(linkBtn('Target: ' + nm(e.target), () => selectNode(e.target)));
+    p.append(field('Endpoints', ul));
+  } else if (kind === 'step') {
+    const st = extra; if (!st) return;
+    const n = nodeById[st.node] || { name: st.node, type: 'unknown' };
+    p.append(h('h2', { text: 'Step ' + (extra._n || '') + ': ' + n.name }),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0' }, h('span', { class: 'tag ' + st.direction, text: st.direction === 'request' ? 'Request →' : '← Response' }), typeTag(n)));
+    p.append(field('What happens', st.action));
+    if (st.data) p.append(field('Data passing', st.data));
+    p.append(field('Evidence', evidenceList(st.evidence)));
+    p.append(h('ul', { class: 'linklist' }, linkBtn('Inspect ' + n.name, () => selectNode(st.node))));
+  } else if (kind === 'uncertain') {
+    const u = uncertain.find(x => x._id === id); if (!u) return;
+    p.append(h('h2', { text: nm(u.source) + ' ⇢ ' + nm(u.target) }),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0' }, h('span', { class: 'tag', style: 'border-style:dashed', text: 'Unconfirmed ' + (u.suspected_kind || '') })));
+    p.append(field('Why suspected', u.reason || '—'), field('What would confirm it', u.would_confirm || '—'), field('Clues', evidenceList(u.hints)));
+  }
+}
+function selectNode(id) {
+  inspect('node', id);
+  if (cy) { cy.elements().unselect(); const n = cy.getElementById(id); if (n.nonempty()) { n.select(); if (state.view === 'overview') cy.animate({ center: { eles: n } }, { duration: reduceMotion ? 0 : 250 }); } }
+}
+function selectEdge(id) {
+  inspect('edge', id);
+  if (cy) { cy.elements().unselect(); const e = cy.getElementById(id); if (e.nonempty()) e.select(); }
+}
+function flowNodeIds(f) {
+  const set = new Set();
+  (f.steps || []).forEach(x => set.add(x.node));
+  (f.branches || []).forEach(b => (b.steps || []).forEach(x => set.add(x.node)));
+  return set;
+}
+
+/* ------------------------------------------------------------------ uncertain panel */
+function renderUncertain() {
+  $('#uncBadge').textContent = String(uncertain.length);
+  $('#uncBadge').style.display = uncertain.length ? '' : 'none';
+  const p = clear($('#panel-unc'));
+  p.append(h('h2', { text: 'Uncertain connections' }),
+    h('p', { class: 'hint', text: 'Suspected links with no proof in the code. They are never drawn as real connections.' }));
+  if (!uncertain.length) p.append(h('p', { class: 'note', text: 'None recorded.' }));
+  uncertain.forEach(u => {
+    p.append(h('div', { class: 'ucard' },
+      h('h3', { text: nm(u.source) + ' ⇢ ' + nm(u.target) + (u.suspected_kind ? '  (' + u.suspected_kind + ')' : '') }),
+      h('p', null, h('strong', { text: 'Why: ' }), u.reason || '—'),
+      h('p', null, h('strong', { text: 'Would confirm: ' }), u.would_confirm || '—'),
+      u.hints && u.hints.length ? evidenceList(u.hints) : null,
+      h('div', { style: 'display:flex;gap:6px;margin-top:6px' },
+        h('button', { class: 'btn', type: 'button', onclick: () => { inspect('uncertain', u._id); } }, 'Details'),
+        h('button', { class: 'btn', type: 'button', onclick: () => { setView('overview'); state.showUnc = true; $('#optUncertain').checked = true; buildOverview(); setTimeout(() => { if (cy) { const e = cy.getElementById(u._id); if (e.nonempty()) { e.select(); cy.animate({ center: { eles: e } }, { duration: 200 }); } } }, 400); inspect('uncertain', u._id); } }, 'Show on map'))));
+  });
+  const notes = [];
+  (meta.limitations || []).forEach(t => notes.push(h('li', { text: t })));
+  (meta.skipped || []).forEach(t => notes.push(h('li', { text: 'Skipped: ' + t })));
+  if (notes.length) p.append(field('Limitations', h('ul', { style: 'margin:4px 0;padding-left:18px' }, notes)));
+  if (meta.generated_at) p.append(h('p', { class: 'hint', text: 'Generated ' + meta.generated_at }));
+}
+
+/* ------------------------------------------------------------------ views / tabs */
+let cy = null, cyBuilt = false;
+function setView(v) {
+  state.view = v;
+  $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === v)));
+  $$('.view').forEach(x => x.classList.toggle('on', x.id === 'view-' + v));
+  $('#flowBar').hidden = v === 'overview';
+  if (v === 'overview') { ensureOverview(); if (cy) { cy.resize(); } }
+  if (v === 'journey') renderJourney(true);
+  if (v === 'sequence') renderSequence();
+  syncHash();
+}
+$$('.tab').forEach(t => t.addEventListener('click', () => setView(t.dataset.view)));
+$$('.tab').forEach(t => t.addEventListener('keydown', ev => {
+  if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+  const tabs = $$('.tab'); const i = tabs.indexOf(t);
+  const nx = tabs[(i + (ev.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  nx.focus(); setView(nx.dataset.view); ev.preventDefault();
+}));
+function openFlow(flowId, view, branchId, step) {
+  state.flowId = flowId; state.branchId = branchId || null; state.cur = step || 0;
+  fillFlowBar();
+  setView(view || 'journey');
+}
+
+/* ------------------------------------------------------------------ flow bar */
+function currentFlow() { return flows.find(f => f.id === state.flowId) || null; }
+function fillFlowBar() {
+  const sel = clear($('#flowSel'));
+  flows.forEach(f => sel.append(h('option', { value: f.id, text: f.name })));
+  if (state.flowId) sel.value = state.flowId;
+  const f = currentFlow();
+  const chips = clear($('#branchChips'));
+  if (!f) return;
+  const mk = (id, label, title) => chips.append(h('button', {
+    class: 'chip', type: 'button', 'aria-pressed': String(state.branchId === id), title: title || '',
+    onclick: () => { state.branchId = id; state.cur = 0; fillFlowBar(); refreshFlowViews(); }
+  }, label));
+  mk(null, 'Main path', f.summary || '');
+  (f.branches || []).forEach(b => mk(b.id, b.label, b.condition || ''));
+}
+$('#flowSel').addEventListener('change', e => { state.flowId = e.target.value; state.branchId = null; state.cur = 0; fillFlowBar(); refreshFlowViews(); });
+function refreshFlowViews() {
+  if (state.view === 'journey') renderJourney(true);
+  if (state.view === 'sequence') renderSequence();
+  syncHash();
+}
+
+/* flow model */
+function buildSequence(f, branchId) {
+  const main = (f.steps || []).map(x => Object.assign({}, x, { _b: null }));
+  const b = branchId && (f.branches || []).find(x => x.id === branchId);
+  if (!b) return { seq: main, branch: null };
+  const ai = main.findIndex(x => x.id === b.after);
+  const seq = main.slice(0, ai + 1).concat((b.steps || []).map(x => Object.assign({}, x, { _b: b })));
+  if (b.rejoin) { const ri = main.findIndex(x => x.id === b.rejoin); if (ri >= 0) seq.push.apply(seq, main.slice(ri)); }
+  return { seq, branch: b, divergeIndex: ai + 1 };
+}
+function columnsFor(f) {
+  const order = [], seen = new Set();
+  (f.steps || []).forEach(x => { if (!seen.has(x.node)) { seen.add(x.node); order.push(x.node); } });
+  (f.branches || []).forEach(b => {
+    const anchor = (f.steps || []).find(x => x.id === b.after);
+    let pos = anchor ? order.indexOf(anchor.node) : order.length - 1;
+    (b.steps || []).forEach(x => { if (!seen.has(x.node)) { seen.add(x.node); order.splice(++pos, 0, x.node); } });
+  });
+  return order;
+}
+
+/* ------------------------------------------------------------------ OVERVIEW (Cytoscape + ELK) */
+function ensureOverview() { if (!cyBuilt) { cyBuilt = true; buildOverview(); } }
+function hiddenType(t) { return state.hidden.has(t); }
+
+function buildOverview() {
+  const box = $('#cy');
+  if (typeof cytoscape === 'undefined' || typeof ELK === 'undefined') {
+    clear(box).append(h('div', { class: 'empty' }, h('h3', { text: 'Overview map needs its libraries' }),
+      h('p', { text: 'Cytoscape.js and ELK are loaded from a CDN. Connect to the internet and reload. The Request journey tab works offline.' })));
+    renderLegend(); return;
+  }
+  if (!cytoscape.__elkRegistered && typeof cytoscapeElk !== 'undefined') { try { cytoscape.use(cytoscapeElk); } catch (e) { /* already */ } cytoscape.__elkRegistered = true; }
+  if (cy) { cy.destroy(); cy = null; }
+  const els = [];
+  const mws = nodes.filter(n => n.type === 'middleware' && !hiddenType('middleware'));
+  const groupKeys = Array.from(new Set(mws.map(n => n.group || '')));
+  const gid = n => '__mw:' + (n.group || '');
+  groupKeys.forEach(k => els.push({ data: { id: '__mw:' + k, label: k ? 'Security layer: ' + k : 'Security layer (middleware)', isGroup: true }, classes: 'group' }));
+  const sizeOf = (n) => {
+    const t = n.type, label = n.name;
+    let w = Math.max(96, label.length * 7.4 + 30), hgt = 46;
+    if (t === 'cache' || t === 'queue') { w += 34; hgt = 62; }
+    if (t === 'gateway' || t === 'external-api' || t === 'storage') { w += 22; hgt = 56; }
+    if (t === 'user') { hgt = 56; w = Math.max(w, 104); }
+    if (t === 'database') hgt = 62;
+    return { w: Math.round(w), h: hgt };
+  };
+  nodes.forEach(n => {
+    if (hiddenType(n.type)) return;
+    const z = sizeOf(n);
+    const sub = n.type === 'middleware' ? (n.category || '') : (n.tech || '');
+    els.push({ data: { id: n.id, label: n.name + (sub ? '\n' + sub : ''), type: n.type, w: z.w, h: z.h, parent: n.type === 'middleware' ? gid(n) : undefined,
+      layer: n.type === 'user' || n.type === 'frontend' ? 'FIRST' : (n.type === 'database' || n.type === 'storage' ? 'LAST' : '') } });
+  });
+  const visible = new Set(els.map(e => e.data.id));
+  edges.forEach(e => {
+    if (visible.has(e.source) && visible.has(e.target))
+      els.push({ data: { id: e._id, source: e.source, target: e.target, kind: e.kind, label: e.kind === 'middleware-next' ? '' : trunc(e.label || '', 26) }, classes: 'real' });
+  });
+  let uncCount = 0;
+  if (state.showUnc) {
+    const byName = {}; nodes.forEach(n => { byName[n.name.toLowerCase()] = n.id; });
+    uncertain.forEach(u => {
+      const resolve = x => (nodeById[x] ? x : (byName[String(x).toLowerCase()] || null));
+      let a = resolve(u.source), b = resolve(u.target);
+      const ghost = (x, r) => { if (r) return r; const id = 'ghost:' + x; if (!els.some(e => e.data.id === id)) els.push({ data: { id, label: String(x) + '\n(unconfirmed)', type: 'unknown', w: Math.max(96, String(x).length * 7.4 + 30), h: 46 }, classes: 'ghost' }); return id; };
+      a = ghost(u.source, a); b = ghost(u.target, b);
+      if (visible.has(a) || a.indexOf('ghost:') === 0) {
+        if (visible.has(b) || b.indexOf('ghost:') === 0) { els.push({ data: { id: u._id, source: a, target: b, kind: u.suspected_kind || 'unconfirmed', label: 'unconfirmed' }, classes: 'unc' }); uncCount++; }
+      }
+    });
+  }
+  cy = cytoscape({ container: box, elements: els, minZoom: 0.2, maxZoom: 2.5, boxSelectionEnabled: false, autounselectify: false });
+  styleCy();
+  cy.on('tap', 'node', ev => { const n = ev.target; if (n.data('isGroup')) return; if (n.hasClass('ghost')) return; focusNode(n.id()); inspect('node', n.id()); });
+  cy.on('tap', 'edge', ev => { const e = ev.target; if (e.hasClass('unc')) inspect('uncertain', e.id()); else inspect('edge', e.id()); focusEdge(e); });
+  cy.on('tap', ev => { if (ev.target === cy) { cy.elements().removeClass('dim hl'); } });
+  runLayout();
+  renderLegend();
+  $('#ovCount').textContent = nodes.length + ' components · ' + edges.length + ' connections' + (uncCount ? ' · ' + uncCount + ' uncertain' : '');
+  applySearch();
+}
+function focusNode(id) {
+  if (!cy) return;
+  const n = cy.getElementById(id); const nb = n.closedNeighborhood();
+  cy.elements().addClass('dim'); nb.removeClass('dim'); nb.addClass('hl');
+}
+function focusEdge(e) {
+  const set = e.connectedNodes().union(e);
+  cy.elements().addClass('dim'); set.removeClass('dim');
+}
+function runLayout() {
+  if (!cy) return;
+  const lay = cy.layout({
+    name: 'elk', animate: false, fit: true, padding: 30,
+    eles: cy.nodes().union(cy.edges().not('[kind = "response"]')),
+    nodeDimensionsIncludeLabels: false,
+    elk: {
+      algorithm: 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+      'elk.spacing.nodeNode': 34, 'elk.layered.spacing.nodeNodeBetweenLayers': 70,
+      'elk.padding': '[top=34,left=18,bottom=18,right=18]',
+      'elk.layered.crossingMinimization.semiInteractive': 'true'
+    },
+    nodeLayoutOptions: n => (n.data('layer') ? { 'elk.layered.layering.layerConstraint': n.data('layer') } : undefined)
+  });
+  lay.run();
+  setTimeout(() => { if (cy) cy.fit(undefined, 30); }, 350);
+}
+const EDGE_COLOR = k => ({
+  http: 'service', grpc: 'service', 'db-query': 'database', 'cache-read': 'cache', 'cache-write': 'cache',
+  publishes: 'queue', subscribes: 'queue'
+}[k]);
+function styleCy() {
+  if (!cy) return;
+  const bg = cssVar('--bg'), surf = cssVar('--surface'), text = cssVar('--text'), muted = cssVar('--muted'), res = cssVar('--res'), warn = cssVar('--warn'), accent = cssVar('--accent');
+  const st = [
+    { selector: 'node[w]', style: { 'width': 'data(w)', 'height': 'data(h)' } },
+    { selector: 'node', style: { 'shape': 'round-rectangle', 'label': 'data(label)', 'color': text, 'font-size': 11.5, 'font-family': 'ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif',
+      'text-wrap': 'wrap', 'text-max-width': 200, 'text-valign': 'center', 'text-halign': 'center', 'border-width': 2, 'line-height': 1.25 } },
+    { selector: 'node.group', style: { 'shape': 'round-rectangle', 'background-color': mix(cssVar('--c-middleware'), bg, 0.07), 'border-style': 'dashed', 'border-color': cssVar('--c-middleware'), 'border-width': 1.5, 'label': 'data(label)',
+      'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -4, 'font-size': 11, 'font-weight': 700, 'color': cssVar('--c-middleware'), 'padding': 14 } },
+    { selector: 'edge', style: { 'width': 2, 'curve-style': 'bezier', 'line-color': muted, 'target-arrow-color': muted, 'target-arrow-shape': 'triangle', 'arrow-scale': 1,
+      'label': state.labels ? 'data(label)' : '', 'font-size': 9.5, 'color': muted, 'text-background-color': bg, 'text-background-opacity': 0.9, 'text-background-padding': 2,
+      'text-rotation': 'autorotate', 'font-family': 'ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif', 'opacity': 0.95 } },
+    { selector: 'edge.unc', style: { 'line-style': 'dashed', 'line-dash-pattern': [6, 4], 'line-color': warn, 'target-arrow-color': warn, 'color': warn, 'width': 1.8 } },
+    { selector: 'node.ghost', style: { 'border-style': 'dashed', 'border-color': warn, 'background-color': bg, 'color': muted } },
+    { selector: '.dim', style: { 'opacity': 0.14 } },
+    { selector: 'node.hl', style: { 'border-width': 3 } },
+    { selector: ':selected', style: { 'overlay-color': accent, 'overlay-opacity': 0.12, 'overlay-padding': 6 } },
+    { selector: 'node.match', style: { 'border-width': 4, 'underlay-color': accent, 'underlay-opacity': 0.22, 'underlay-padding': 7 } }
+  ];
+  Object.keys(TYPES).forEach(t => {
+    const c = typeColor(t);
+    st.push({ selector: 'node[type="' + t + '"]', style: { 'shape': TYPES[t].shape, 'background-color': mix(c, surf, 0.16), 'border-color': c } });
+  });
+  ['http', 'grpc', 'db-query', 'cache-read', 'cache-write', 'publishes', 'subscribes'].forEach(k => {
+    const c = typeColor(EDGE_COLOR(k));
+    st.push({ selector: 'edge.real[kind="' + k + '"]', style: { 'line-color': c, 'target-arrow-color': c } });
+  });
+  st.push({ selector: 'edge.real[kind="response"]', style: { 'line-color': res, 'target-arrow-color': res, 'line-style': 'dotted' } });
+  st.push({ selector: 'edge.real[kind="middleware-next"]', style: { 'width': 1.4 } });
+  cy.style().fromJson(st).update();
+}
+$('#fitBtn').addEventListener('click', () => { if (cy) cy.fit(undefined, 30); });
+$('#relayoutBtn').addEventListener('click', () => { if (cy) { cy.elements().removeClass('dim hl'); runLayout(); } });
+$('#optLabels').addEventListener('change', e => { state.labels = e.target.checked; styleCy(); });
+$('#optUncertain').addEventListener('change', e => { state.showUnc = e.target.checked; buildOverview(); });
+
+function shapeIcon(shape, color) {
+  const fill = mix(color, cssVar('--surface'), 0.22), a = { fill, stroke: color, 'stroke-width': 1.6 };
+  const sv = s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' });
+  const add = (tag, at) => sv.append(s(tag, Object.assign({}, a, at)));
+  switch (shape) {
+    case 'ellipse': add('ellipse', { cx: 11, cy: 8, rx: 9, ry: 6 }); break;
+    case 'hexagon': add('polygon', { points: '5,2 17,2 21,8 17,14 5,14 1,8' }); break;
+    case 'cut-rectangle': add('polygon', { points: '4,2 18,2 21,5 21,11 18,14 4,14 1,11 1,5' }); break;
+    case 'barrel': add('path', { d: 'M3 4a8 2.6 0 0 1 16 0v8a8 2.6 0 0 1-16 0z' }); break;
+    case 'round-diamond': add('polygon', { points: '11,1 21,8 11,15 1,8', 'stroke-linejoin': 'round' }); break;
+    case 'rhomboid': add('polygon', { points: '5,2 21,2 17,14 1,14' }); break;
+    case 'octagon': add('polygon', { points: '6,1 16,1 21,6 21,10 16,15 6,15 1,10 1,6' }); break;
+    case 'round-pentagon': add('polygon', { points: '11,1 21,6.5 17.5,15 4.5,15 1,6.5', 'stroke-linejoin': 'round' }); break;
+    case 'round-tag': add('polygon', { points: '2,2 16,2 21,8 16,14 2,14', 'stroke-linejoin': 'round' }); break;
+    default: add('rect', { x: 1.5, y: 2, width: 19, height: 12, rx: 4 });
+  }
+  return sv;
+}
+function renderLegend() {
+  const lg = clear($('#legend'));
+  const present = Object.keys(TYPES).filter(t => nodes.some(n => n.type === t));
+  lg.append(h('h4', { text: 'Legend (click to hide)' }));
+  present.forEach(t => lg.append(h('button', { type: 'button', 'aria-pressed': String(!state.hidden.has(t)), onclick: () => { if (state.hidden.has(t)) state.hidden.delete(t); else state.hidden.add(t); buildOverview(); } },
+    shapeIcon(TYPES[t].shape, typeColor(t)), TYPES[t].label)));
+  lg.append(h('div', { class: 'sep' }));
+  const dash = s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' }, s('line', { x1: 1, y1: 8, x2: 21, y2: 8, stroke: cssVar('--warn'), 'stroke-width': 2, 'stroke-dasharray': '4 3' }));
+  lg.append(h('div', { style: 'display:flex;gap:8px;align-items:center;font-size:12.5px' }, dash, 'Unconfirmed link'));
+  const dot = s('svg', { width: 22, height: 16, viewBox: '0 0 22 16' }, s('line', { x1: 1, y1: 8, x2: 21, y2: 8, stroke: cssVar('--c-middleware'), 'stroke-width': 1.5, 'stroke-dasharray': '3 2' }));
+  if (nodes.some(n => n.type === 'middleware')) lg.append(h('div', { style: 'display:flex;gap:8px;align-items:center;font-size:12.5px;margin-top:2px' }, dot, 'Security layer'));
+}
+
+/* ------------------------------------------------------------------ JOURNEY (custom SVG) */
+const J = { BW: 124, BH: 54, TOP: 136, ANIM: 760 };
+let jm = null; // journey model
+const anim = { raf: 0, playing: false, token: 0, resolve: null };
+
+function renderJourney(rebuild) {
+  const f = currentFlow();
+  const svgEl = $('#jsvg');
+  if (!f || !(f.steps || []).length) {
+    clear(svgEl); svgEl.setAttribute('height', 10);
+    clear($('#stepList')); clear($('#stepCard')).append(h('div', { class: 'empty', text: 'No request flows have been traced in this map yet. Run /repo-visualizer:visualize "METHOD /path" to trace one.' }));
+    $('#jCount').textContent = ''; return;
+  }
+  stopPlay();
+  const { seq, branch } = buildSequence(f, state.branchId);
+  const cols = columnsFor(f);
+  seq.forEach((x, i) => { x._n = i + 1; });
+  const wrapW = $('#jwrap').clientWidth || 900;
+  const colW = Math.max(J.BW + 12, Math.floor(wrapW / Math.max(cols.length, 1)));
+  const W = colW * cols.length, bot = J.TOP + J.BH, H = bot + 132;
+  const cx = id => colW * (cols.indexOf(id) + 0.5);
+  if (state.cur > seq.length - 1) state.cur = seq.length - 1;
+
+  clear(svgEl);
+  svgEl.setAttribute('width', W); svgEl.setAttribute('height', H); svgEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  const defs = s('defs', null,
+    s('marker', { id: 'mReq', viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0 0 L10 5 L0 10 z', id: 'arrReq' })),
+    s('marker', { id: 'mRes', viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0 0 L10 5 L0 10 z', id: 'arrRes' })));
+  svgEl.append(defs);
+  svgEl.append(s('text', { class: 'lane', x: 8, y: 16, text: 'REQUEST →' }), s('text', { class: 'lane', x: 8, y: H - 8, text: '← RESPONSE' }));
+
+  // paths
+  const pathLayer = s('g'), badgeLayer = s('g'), nodeLayer = s('g'), dotLayer = s('g');
+  const slots = {};
+  const paths = [], badges = [];
+  for (let k = 1; k < seq.length; k++) {
+    const a = seq[k - 1].node, b = seq[k].node, dir = seq[k].direction === 'response' ? 'response' : 'request';
+    const ia = cols.indexOf(a), ib = cols.indexOf(b), up = dir === 'request';
+    const y = up ? J.TOP : bot, sgn = up ? -1 : 1;
+    const key = dir + ':' + Math.min(ia, ib) + ':' + Math.max(ia, ib);
+    const occ = slots[key] = (slots[key] || 0) + 1;
+    let d;
+    if (ia === ib) {
+      const x = cx(a), hh = 30 + (occ - 1) * 12;
+      d = 'M' + (x - 16) + ' ' + y + ' C' + (x - 16) + ' ' + (y + sgn * hh) + ' ' + (x + 16) + ' ' + (y + sgn * hh) + ' ' + (x + 16) + ' ' + y;
+    } else {
+      const sg = ib > ia ? 1 : -1, x0 = cx(a) + sg * 14, x1 = cx(b) - sg * 14;
+      const hh = Math.min(96, 30 + 15 * Math.abs(ib - ia)) + (occ - 1) * 12;
+      d = 'M' + x0 + ' ' + y + ' C' + x0 + ' ' + (y + sgn * hh) + ' ' + x1 + ' ' + (y + sgn * hh) + ' ' + x1 + ' ' + y;
+    }
+    const p = s('path', { d, class: 'jp ' + dir, 'marker-end': 'url(#' + (dir === 'request' ? 'mReq' : 'mRes') + ')', 'data-k': k, tabindex: 0, role: 'button', 'aria-label': 'Step ' + (k + 1) });
+    p.append(s('title', { text: 'Step ' + (k + 1) + ': ' + seq[k].action }));
+    p.addEventListener('click', () => jumpTo(k, true));
+    p.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { jumpTo(k, true); ev.preventDefault(); } });
+    pathLayer.append(p); paths[k] = p;
+  }
+  // nodes
+  const used = new Set(seq.map(x => x.node));
+  cols.forEach(id => {
+    const n = nodeById[id] || { id, name: id, type: 'unknown' };
+    const x = cx(id) - J.BW / 2, c = typeColor(n.type);
+    const g = s('g', { class: 'jn' + (used.has(id) ? '' : ' idle'), 'data-node': id, tabindex: 0, role: 'button', 'aria-label': n.name });
+    g.append(s('rect', { x, y: J.TOP, width: J.BW, height: J.BH, rx: 11, style: 'stroke:' + c + ';fill:' + mix(c, cssVar('--surface'), 0.14) }),
+      s('text', { x: x + J.BW / 2, y: J.TOP + 23, 'text-anchor': 'middle', text: trunc(n.name, 16) }),
+      s('text', { class: 'sub', x: x + J.BW / 2, y: J.TOP + 40, 'text-anchor': 'middle', text: trunc((TYPES[n.type] || { label: n.type }).label + (n.category ? ' · ' + n.category : ''), 22) }),
+      s('title', { text: n.name }));
+    g.addEventListener('click', () => { selectNode(id); });
+    g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { selectNode(id); ev.preventDefault(); } });
+    nodeLayer.append(g);
+  });
+  svgEl.append(pathLayer, nodeLayer, badgeLayer, dotLayer);
+  // badges at path midpoints (needs DOM for geometry)
+  paths.forEach((p, k) => {
+    if (!p) return;
+    const len = p.getTotalLength(), mid = p.getPointAtLength(len / 2);
+    const g = s('g', { class: 'jb ' + (seq[k].direction === 'response' ? 'response' : 'request'), 'data-k': k });
+    g.append(s('circle', { cx: mid.x, cy: mid.y, r: 10 }), s('text', { x: mid.x, y: mid.y + 0.5, text: k + 1 }));
+    g.addEventListener('click', () => jumpTo(k, true));
+    badgeLayer.append(g); badges[k] = g;
+  });
+  const halo = s('circle', { class: 'halo request', r: 15, cx: -50, cy: -50 });
+  const dot = s('circle', { class: 'dot request', r: 7, cx: -50, cy: -50 });
+  dotLayer.append(halo, dot);
+
+  jm = { f, seq, branch, cols, cx, paths, badges, dot, halo, colW, W, bot, nodeLayer };
+
+  // step list
+  const ol = h('ol');
+  seq.forEach((x, i) => {
+    const n = nodeById[x.node] || { name: x.node };
+    ol.append(h('li', { 'data-i': i }, h('button', { type: 'button', class: x.direction === 'response' ? 'res' : '', onclick: () => jumpTo(i, true) },
+      h('span', { class: 'n', text: i + 1 }),
+      h('span', { class: 't' }, (x.direction === 'response' ? '← ' : '→ ') + n.name,
+        x._b ? h('span', { class: 'bdg', text: x._b.label }) : null,
+        h('small', { text: trunc(x.action, 90) })))));
+  });
+  clear($('#stepList')).append(ol);
+  placeDot(state.cur, state.cur > 0);
+  updateJourneyUI();
+  applySearch();
+}
+function pointFor(k) {
+  const m = jm; if (!m) return { x: -50, y: -50 };
+  if (k <= 0) return { x: m.cx(m.seq[0].node), y: J.TOP };
+  const p = m.paths[k]; return p.getPointAtLength(p.getTotalLength());
+}
+function placeDot(k, scroll) {
+  if (!jm) return;
+  const pt = pointFor(k), dir = jm.seq[k].direction === 'response' ? 'response' : 'request';
+  jm.dot.setAttribute('class', 'dot ' + dir); jm.halo.setAttribute('class', 'halo ' + dir);
+  [jm.dot, jm.halo].forEach(c => { c.setAttribute('cx', pt.x); c.setAttribute('cy', pt.y); });
+  if (scroll) keepVisible(pt.x);
+}
+function keepVisible(x) {
+  const w = $('#jwrap'); if (!w) return;
+  if (x < w.scrollLeft + 60 || x > w.scrollLeft + w.clientWidth - 60) w.scrollTo({ left: Math.max(0, x - w.clientWidth / 2), behavior: reduceMotion ? 'auto' : 'smooth' });
+}
+function speed() { return parseFloat($('#jSpeed').value) || 1; }
+function animateAlong(k, reverse) {
+  return new Promise(resolve => {
+    cancelAnimationFrame(anim.raf); if (anim.resolve) anim.resolve();
+    anim.resolve = resolve;
+    const p = jm.paths[k]; if (!p) { resolve(); return; }
+    const dir = jm.seq[k].direction === 'response' ? 'response' : 'request';
+    jm.dot.setAttribute('class', 'dot ' + dir); jm.halo.setAttribute('class', 'halo ' + dir);
+    const len = p.getTotalLength(), dur = reduceMotion ? 0 : J.ANIM / speed(), t0 = performance.now();
+    const tick = now => {
+      const t = dur ? Math.min(1, (now - t0) / dur) : 1, e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const pt = p.getPointAtLength((reverse ? 1 - e : e) * len);
+      [jm.dot, jm.halo].forEach(c => { c.setAttribute('cx', pt.x); c.setAttribute('cy', pt.y); });
+      keepVisible(pt.x);
+      if (t < 1) anim.raf = requestAnimationFrame(tick); else { anim.resolve = null; resolve(); }
+    };
+    anim.raf = requestAnimationFrame(tick);
+  });
+}
+async function goTo(k, animate) {
+  if (!jm) return;
+  const n = jm.seq.length; k = Math.max(0, Math.min(n - 1, k));
+  const prev = state.cur; state.cur = k;
+  updateJourneyUI();
+  if (animate && Math.abs(k - prev) === 1) {
+    if (k > prev) await animateAlong(k, false);
+    else { await animateAlong(prev, true); placeDot(k, true); }
+  } else { cancelAnimationFrame(anim.raf); if (anim.resolve) { anim.resolve(); anim.resolve = null; } placeDot(k, true); }
+  syncHash();
+}
+function jumpTo(k, animate) { stopPlay(); return goTo(k, animate); }
+function updateJourneyUI() {
+  if (!jm) return;
+  const { seq, paths, badges } = jm, k = state.cur;
+  paths.forEach((p, i) => { if (p) p.setAttribute('class', 'jp ' + (seq[i].direction === 'response' ? 'response' : 'request') + (i < k ? ' visited' : i === k ? ' current' : ' future')); });
+  badges.forEach((b, i) => { if (b) b.setAttribute('class', 'jb ' + (seq[i].direction === 'response' ? 'response' : 'request') + (i > k ? ' future' : '')); });
+  $$('.jn', $('#jsvg')).forEach(g => g.classList.toggle('active', g.dataset.node === seq[k].node));
+  $$('#stepList li').forEach(li => {
+    const i = +li.dataset.i, b = $('button', li);
+    li.classList.toggle('future', i > k);
+    if (i === k) { b.setAttribute('aria-current', 'step'); const box = $('#stepList'); const top = li.offsetTop, bh = li.offsetHeight; if (top < box.scrollTop || top + bh > box.scrollTop + box.clientHeight) box.scrollTo({ top: Math.max(0, top - 60), behavior: reduceMotion ? 'auto' : 'smooth' }); }
+    else b.removeAttribute('aria-current');
+  });
+  $('#jCount').textContent = 'Step ' + (k + 1) + ' / ' + seq.length;
+  $('#jPrev').disabled = k <= 0; $('#jNext').disabled = k >= seq.length - 1;
+  $('#jPlay').innerHTML = anim.playing ? '&#10074;&#10074; Pause' : (k >= seq.length - 1 ? '&#8634; Replay' : '&#9654; Play');
+  renderCard();
+}
+function renderCard() {
+  const { seq, f, branch } = jm, k = state.cur, st = seq[k];
+  const n = nodeById[st.node] || { name: st.node, type: 'unknown' };
+  const c = clear($('#stepCard'));
+  c.append(h('h3', { text: 'Step ' + (k + 1) + ' of ' + seq.length + ': ' + n.name }),
+    h('div', { class: 'meta' },
+      h('span', { class: 'tag ' + st.direction, text: st.direction === 'response' ? '← Response' : 'Request →' }),
+      typeTag(n), n.tech ? h('span', { class: 'tag', text: n.tech }) : null,
+      st._b ? h('span', { class: 'tag', text: 'Branch: ' + st._b.label }) : null));
+  if (st._b && st._b.condition && (k === 0 || !seq[k - 1]._b)) c.append(h('div', { class: 'note' }, h('strong', { text: 'Branch taken when: ' }), st._b.condition));
+  c.append(field('What happens here', st.action));
+  c.append(field('Data passing', st.data || '—'));
+  if (n.description) c.append(field('About ' + n.name, n.description));
+  c.append(field('Evidence', evidenceList(st.evidence)));
+  c.append(h('div', { style: 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap' },
+    h('button', { class: 'btn', type: 'button', onclick: () => selectNode(st.node) }, 'Inspect component'),
+    h('button', { class: 'btn', type: 'button', onclick: () => inspect('step', st.node, st) }, 'Show in side panel')));
+  if (k === seq.length - 1) {
+    if (branch && branch.outcome) c.append(h('div', { class: 'note' }, h('strong', { text: 'Outcome' + (branch.outcome.status ? ' (' + branch.outcome.status + ')' : '') + ': ' }), branch.outcome.description || ''));
+    if (f.notes) c.append(h('div', { class: 'note', text: f.notes }));
+  } else if (k === 0 && f.summary) c.append(h('div', { class: 'note', text: f.summary }));
+}
+function stopPlay() { anim.playing = false; anim.token++; if (anim.resolve) { cancelAnimationFrame(anim.raf); } }
+async function togglePlay() {
+  if (!jm) return;
+  if (anim.playing) { stopPlay(); updateJourneyUI(); return; }
+  if (state.cur >= jm.seq.length - 1) { state.cur = 0; placeDot(0, true); }
+  const tok = ++anim.token; anim.playing = true; updateJourneyUI();
+  while (anim.playing && tok === anim.token && state.cur < jm.seq.length - 1) {
+    await goTo(state.cur + 1, true);
+    if (tok !== anim.token) return;
+    await new Promise(r => setTimeout(r, reduceMotion ? 250 : 380 / speed()));
+  }
+  if (tok === anim.token) { anim.playing = false; updateJourneyUI(); }
+}
+$('#jPlay').addEventListener('click', togglePlay);
+$('#jNext').addEventListener('click', () => jumpTo(state.cur + 1, true));
+$('#jPrev').addEventListener('click', () => jumpTo(state.cur - 1, true));
+$('#jReset').addEventListener('click', () => { stopPlay(); state.cur = 0; placeDot(0, true); updateJourneyUI(); syncHash(); });
+document.addEventListener('keydown', ev => {
+  const tag = (ev.target && ev.target.tagName) || '';
+  if (ev.key === '/' && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') { ev.preventDefault(); $('#search').focus(); return; }
+  if (state.view !== 'journey' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (ev.key === 'ArrowRight') { jumpTo(state.cur + 1, true); ev.preventDefault(); }
+  if (ev.key === 'ArrowLeft') { jumpTo(state.cur - 1, true); ev.preventDefault(); }
+});
+let rz = 0;
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (state.view === 'journey') renderJourney(true); if (cy && state.view === 'overview') { cy.resize(); } }, 200); });
+
+/* ------------------------------------------------------------------ SEQUENCE (Mermaid) */
+let seqN = 0;
+function mm(t) { // escape for Mermaid text
+  return String(t == null ? '' : t).replace(/[\r\n]+/g, ' ').replace(/%%/g, '%').replace(/#/g, '#35;').replace(/;/g, '#59;').replace(/</g, '#60;').replace(/>/g, '#62;').replace(/"/g, '#34;');
+}
+function renderSequence() {
+  const f = currentFlow(), host = clear($('#seq'));
+  if (!f || !(f.steps || []).length) { host.append(h('div', { class: 'empty', text: 'No request flows have been traced in this map yet. Run /repo-visualizer:visualize "METHOD /path" to trace one.' })); return; }
+  const { seq, branch, divergeIndex } = buildSequence(f, state.branchId);
+  seq.forEach((x, i) => { x._n = i + 1; });
+  const cols = columnsFor(f).filter(id => seq.some(x => x.node === id));
+  const pid = {}; cols.forEach((id, i) => { pid[id] = 'p' + i; });
+  const lines = ['sequenceDiagram', 'autonumber'];
+  cols.forEach(id => lines.push('participant ' + pid[id] + ' as ' + mm(nm(id))));
+  lines.push('Note over ' + pid[seq[0].node] + ': ' + mm(trunc(seq[0].action, 70)));
+  for (let k = 1; k < seq.length; k++) {
+    const a = pid[seq[k - 1].node], b = pid[seq[k].node], res = seq[k].direction === 'response';
+    if (branch && k === divergeIndex) lines.push('Note over ' + a + ',' + b + ': ' + mm('Branch: ' + branch.label + (branch.condition ? ' - ' + trunc(branch.condition, 60) : '')));
+    lines.push(a + (res ? '-->>' : '->>') + b + ': ' + mm(trunc(seq[k].data || seq[k].action, 64)));
+  }
+  if (typeof mermaid === 'undefined') { sequenceFallback(host, seq); return; }
+  try {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: state.theme === 'dark' ? 'dark' : 'default',
+      sequence: { mirrorActors: true, messageAlign: 'center', wrap: true, width: 140, actorMargin: 24, useMaxWidth: true },
+      themeVariables: { fontFamily: 'ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif' } });
+    const id = 'seqsvg' + (++seqN), token = seqN;
+    mermaid.render(id, lines.join('\n')).then(out => {
+      if (token !== seqN) return;
+      host.innerHTML = out.svg; // SVG produced by Mermaid in strict mode from escaped text
+      wireSequence($('svg', host), seq, cols, pid);
+    }).catch(err => { console.error(err); sequenceFallback(host, seq); });
+  } catch (err) { console.error(err); sequenceFallback(host, seq); }
+}
+function wireSequence(svg, seq, cols, pid) {
+  if (!svg) return;
+  // Mermaid wraps long messages into several text elements, so bind by message LINE (one per
+  // message, in order) and attach each text fragment to the nearest line below it.
+  const lines = $$('[class*="messageLine"]', svg), texts = $$('.messageText', svg);
+  const groups = lines.map(l => [l]);
+  const ly = lines.map(l => { try { const b = l.getBBox(); return b.y + b.height / 2; } catch (e) { return 0; } });
+  texts.forEach(tx => {
+    let ty = 0; try { const b = tx.getBBox(); ty = b.y + b.height; } catch (e) { /* ignore */ }
+    let best = -1, bd = 1e9;
+    ly.forEach((y, i) => { const d = y - ty; if (d >= -8 && d < bd) { bd = d; best = i; } });
+    if (best >= 0) groups[best].push(tx);
+  });
+  groups.forEach((els, i) => {
+    const st = seq[i + 1]; if (!st) return;
+    const act = () => { $$('.msel', svg).forEach(x => x.classList.remove('msel')); els.forEach(x => x.classList.add('msel')); inspect('step', st.node, st); };
+    els.forEach(x => x.addEventListener('click', act));
+  });
+  const byName = {}; cols.forEach(id => { byName[pid[id]] = id; byName[nm(id)] = id; });
+  $$('rect.actor, text.actor, .actor-box', svg).forEach(el => {
+    const key = el.getAttribute('name') || (el.textContent || '').trim();
+    const id = byName[key] || cols.find(c => nm(c) === key);
+    if (id) el.addEventListener('click', () => selectNode(id));
+  });
+}
+function sequenceFallback(host, seq) {
+  host.append(h('div', { class: 'seqfallback' }, h('p', { class: 'note', text: 'The sequence diagram library (Mermaid) could not be loaded, so this is a text version of the same flow.' }),
+    h('ol', null, seq.map((x, i) => h('li', null, i === 0 ? nm(x.node) + ': ' + x.action : nm(seq[i - 1].node) + (x.direction === 'response' ? ' ⇠ ' : ' → ') + nm(x.node) + ': ' + (x.data || x.action))))));
+}
+
+/* ------------------------------------------------------------------ search */
+let resIdx = -1, resItems = [];
+function searchIndex() {
+  const items = [];
+  nodes.forEach(n => items.push({ k: 'node', id: n.id, title: n.name, sub: n.type, hay: [n.name, n.id, n.type, n.category, n.tech, n.description, (n.evidence || []).map(e => e.file).join(' ')].join(' ').toLowerCase() }));
+  edges.forEach(e => items.push({ k: 'edge', id: e._id, title: nm(e.source) + ' → ' + nm(e.target), sub: e.label || e.kind, hay: [nm(e.source), nm(e.target), e.kind, e.label, (e.evidence || []).map(x => x.file).join(' ')].join(' ').toLowerCase() }));
+  flows.forEach(f => {
+    items.push({ k: 'flow', id: f.id, title: f.name, sub: f.summary, hay: [f.name, f.summary].join(' ').toLowerCase() });
+    (f.steps || []).forEach((x, i) => items.push({ k: 'step', id: f.id, step: x.id, idx: i, title: 'Step ' + (i + 1) + ': ' + nm(x.node), sub: f.name + ' — ' + trunc(x.action, 60), hay: [x.action, x.data, nm(x.node), f.name].join(' ').toLowerCase() }));
+  });
+  uncertain.forEach(u => items.push({ k: 'unc', id: u._id, title: nm(u.source) + ' ⇢ ' + nm(u.target), sub: u.reason, hay: [nm(u.source), nm(u.target), u.reason].join(' ').toLowerCase() }));
+  return items;
+}
+const SIDX = searchIndex();
+function matches(q) {
+  const toks = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return toks.length ? SIDX.filter(it => toks.every(t => it.hay.indexOf(t) >= 0)) : [];
+}
+function applySearch() {
+  const q = state.query.trim(), ms = matches(q);
+  const nodeHits = new Set(ms.filter(m => m.k === 'node').map(m => m.id));
+  const stepHits = new Set(ms.filter(m => m.k === 'step' && m.id === state.flowId).map(m => m.idx));
+  if (cy) cy.batch(() => {
+    cy.nodes().removeClass('match');
+    if (q) { cy.nodes().forEach(n => { if (nodeHits.has(n.id())) n.addClass('match'); }); }
+    if (q && nodeHits.size) { cy.elements().addClass('dim'); cy.nodes('.match').removeClass('dim'); cy.nodes('.match').connectedEdges().removeClass('dim'); cy.nodes('.match').connectedEdges().connectedNodes().removeClass('dim'); }
+    else if (!q) cy.elements().removeClass('dim');
+  });
+  $$('.jn', $('#jsvg')).forEach(g => g.classList.toggle('match', !!q && nodeHits.has(g.dataset.node)));
+  $$('#stepList li').forEach(li => li.classList.toggle('match', !!q && stepHits.has(+li.dataset.i)));
+}
+function showResults() {
+  const box = $('#results'), q = state.query.trim();
+  if (!q) { box.hidden = true; return; }
+  resItems = matches(q).slice(0, 14); resIdx = resItems.length ? 0 : -1;
+  clear(box);
+  if (!resItems.length) box.append(h('div', { class: 'none', text: 'No matches' }));
+  resItems.forEach((it, i) => box.append(h('button', { type: 'button', class: i === 0 ? 'on' : '', onclick: () => pick(it) }, h('span', { class: 'rk', text: it.k === 'unc' ? 'unsure' : it.k }), h('span', null, h('span', { text: it.title }), it.sub ? h('span', { class: 'hint', text: '  ' + trunc(it.sub, 50) }) : null))));
+  box.hidden = false;
+}
+function pick(it) {
+  $('#results').hidden = true;
+  if (it.k === 'node') { if (state.view === 'overview') selectNode(it.id); else { inspect('node', it.id); } }
+  else if (it.k === 'edge') { inspect('edge', it.id); if (cy) { cy.elements().unselect(); const e = cy.getElementById(it.id); if (e.nonempty()) { e.select(); } } }
+  else if (it.k === 'flow') openFlow(it.id, state.view === 'overview' ? 'journey' : state.view);
+  else if (it.k === 'step') openFlow(it.id, 'journey', null, it.idx);
+  else if (it.k === 'unc') { inspect('uncertain', it.id); showPanel('unc'); }
+}
+$('#search').addEventListener('input', e => { state.query = e.target.value; showResults(); applySearch(); });
+$('#search').addEventListener('keydown', ev => {
+  const box = $('#results'), btns = $$('button', box);
+  if (ev.key === 'Escape') { ev.target.value = ''; state.query = ''; box.hidden = true; applySearch(); ev.target.blur(); }
+  else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { if (!btns.length) return; resIdx = (resIdx + (ev.key === 'ArrowDown' ? 1 : btns.length - 1)) % btns.length; btns.forEach((b, i) => b.classList.toggle('on', i === resIdx)); ev.preventDefault(); }
+  else if (ev.key === 'Enter' && resItems[resIdx]) { pick(resItems[resIdx]); ev.preventDefault(); }
+});
+document.addEventListener('click', ev => { if (!ev.target.closest('.search')) $('#results').hidden = true; });
+
+/* ------------------------------------------------------------------ hash state (deep links) */
+function syncHash() {
+  try {
+    const p = ['view=' + state.view];
+    if (state.flowId && state.view !== 'overview') { p.push('flow=' + encodeURIComponent(state.flowId)); if (state.branchId) p.push('branch=' + encodeURIComponent(state.branchId)); if (state.view === 'journey') p.push('step=' + (state.cur + 1)); }
+    p.push('theme=' + state.theme);
+    history.replaceState(null, '', '#' + p.join('&'));
+  } catch (e) { /* ignore */ }
+}
+function readHash() {
+  const o = {}; (location.hash || '').replace(/^#/, '').split('&').forEach(kv => { const i = kv.indexOf('='); if (i > 0) o[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
+  return o;
+}
+
+/* ------------------------------------------------------------------ init */
+document.title = (project.name ? project.name + ' — ' : '') + 'Architecture';
+$('#projName').textContent = project.name || 'Architecture';
+$('#projSummary').textContent = project.summary || '';
+renderUncertain();
+const hp = readHash();
+const saved = store('repo-visualizer-theme');
+setTheme(hp.theme || saved || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'), false);
+if (hp.flow && flows.some(f => f.id === hp.flow)) state.flowId = hp.flow;
+if (hp.branch) { const f = currentFlow(); if (f && (f.branches || []).some(b => b.id === hp.branch)) state.branchId = hp.branch; }
+if (hp.step) state.cur = Math.max(0, (parseInt(hp.step, 10) || 1) - 1);
+fillFlowBar();
+inspectInitial();
+setView(['overview', 'journey', 'sequence'].indexOf(hp.view) >= 0 ? hp.view : 'overview');
+function inspectInitial() {
+  const p = $('#panel-details');
+  p.append(h('h2', { text: 'Details' }),
+    h('p', { class: 'hint', text: 'Click any component, connection, or step to see what it does and the file:line evidence behind it.' }),
+    h('p', { class: 'hint' }, 'Tip: press ', h('code', { text: '/' }), ' to search, and use the arrow keys to step through a journey.'));
+  const counts = {}; nodes.forEach(n => { counts[n.type] = (counts[n.type] || 0) + 1; });
+  p.append(h('div', { class: 'field' }, h('h5', { text: 'At a glance' }),
+    h('dl', { class: 'kv' }, h('dt', { text: 'Components' }), h('dd', { text: nodes.length }), h('dt', { text: 'Connections' }), h('dd', { text: edges.length }), h('dt', { text: 'Flows' }), h('dd', { text: flows.length }), h('dt', { text: 'Uncertain' }), h('dd', { text: uncertain.length }))));
+  if (project.languages && project.languages.length) p.append(field('Languages', project.languages.join(', ')));
+  if (project.frameworks && project.frameworks.length) p.append(field('Frameworks', project.frameworks.join(', ')));
+}
+})();
+</script>
+</body>
+</html>
