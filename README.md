@@ -29,6 +29,17 @@ claude plugin install repo-visualizer@repo-visualizer
 
 **New to this, or using the VS Code extension?** Follow the step-by-step [Getting started guide](docs/GETTING-STARTED.md). The extension's chat panel may not accept `/plugin`, and the guide shows the terminal route that works.
 
+## Update
+
+When a new version is published, update the marketplace listing and then the plugin. Run these in a terminal, then start a new Claude Code session:
+
+```
+claude plugin marketplace update repo-visualizer
+claude plugin update repo-visualizer@repo-visualizer
+```
+
+To check which version you have, run `claude plugin list`. If the update does not show a newer version, run the first command again, because the plugin only updates when the marketplace listing has a higher `version`.
+
 ## Usage
 
 Run it inside your project:
