@@ -2,10 +2,15 @@
 """Short inventory of a project, for the repo-visualizer skill.
 
 Standard library only. Walks the project (skipping dependency, build and VCS
-folders and binary files) and prints a SHORT report of: languages by file
-count, manifests, Docker/Kubernetes/IaC files, gateway/proxy configs, env
-example files, likely entry points and folders that look like separate
-services. Output is capped at MAX_LINES lines even for huge repos.
+folders and binary files) and prints a SHORT report of: ignored frontends,
+languages by file count, manifests, Docker/Kubernetes/IaC files, gateway/proxy
+configs, env example files, likely entry points and folders that look like
+separate services. Output is capped at MAX_LINES lines even for huge repos.
+
+This tool is backend-only: frontend code (Angular, React, Vue, Svelte, Next/Nuxt,
+React Native, Flutter, Android/iOS projects, JSP/JSF pages, server-side templates)
+is NOT scanned. Those folders are listed once under "Ignored frontends" and all of
+them are represented by the single "Client / User" node.
 
 Read-only. Never prints file contents, only names and classifications. Real
 .env files are not listed or read; only *.example / *.sample style templates.
@@ -15,6 +20,7 @@ Usage:
     python3 inventory.py            (uses the current directory)
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -70,7 +76,7 @@ MANIFEST_PATTERNS = (
 
 COMPOSE_RE = re.compile(r"^(docker-)?compose([.-].*)?\.ya?ml$")
 ENV_EXAMPLE_RE = re.compile(
-    r"^(\.env\.(example|sample|template|dist|defaults)|example\.env|env\.example)$")
+    r"^(\.env[._-](example|sample|template|dist|defaults)|(example|sample)\.env|env\.(example|sample))$")
 
 INFRA_NAMES = {
     "chart.yaml": "Helm chart", "kustomization.yaml": "Kustomize",
@@ -104,6 +110,26 @@ ENTRY_PATH_SUFFIXES = (
 )
 ENTRY_JAVA_RE = re.compile(r"(Application|Main|App)\.(java|kt|scala)$")
 
+# ---- frontends are detected and skipped (this tool maps the backend only)
+FRONTEND_DEPS = {  # package.json dependency -> label; first match wins, so list specific frameworks first
+    "@angular/core": "Angular", "angular": "AngularJS", "react-native": "React Native", "expo": "React Native (Expo)",
+    "next": "Next.js", "nuxt": "Nuxt", "@remix-run/react": "Remix", "gatsby": "Gatsby", "astro": "Astro",
+    "@ionic/angular": "Ionic", "@ionic/react": "Ionic", "@ionic/vue": "Ionic", "@capacitor/core": "Capacitor",
+    "@sveltejs/kit": "SvelteKit", "svelte": "Svelte", "@vue/cli-service": "Vue", "vue": "Vue",
+    "react-dom": "React", "react": "React", "solid-js": "Solid", "preact": "Preact", "ember-source": "Ember", "lit": "Lit",
+}
+BACKEND_DEPS = {  # a package.json with one of these is a backend even if it also lists a UI library
+    "express", "@nestjs/core", "fastify", "koa", "@hapi/hapi", "hapi", "restify", "@apollo/server", "apollo-server",
+    "apollo-server-express", "hono", "sails", "@adonisjs/core", "@feathersjs/feathers", "@loopback/core", "serverless-http",
+}
+FRONTEND_FILES = {  # file name (lowercase) -> label; ignored unless the same folder also holds a backend manifest
+    "angular.json": "Angular", ".angular-cli.json": "Angular", "vue.config.js": "Vue", "nuxt.config.js": "Nuxt", "nuxt.config.ts": "Nuxt",
+    "next.config.js": "Next.js", "next.config.mjs": "Next.js", "next.config.ts": "Next.js", "svelte.config.js": "Svelte",
+    "astro.config.mjs": "Astro", "gatsby-config.js": "Gatsby", "ionic.config.json": "Ionic", "capacitor.config.json": "Capacitor",
+    "capacitor.config.ts": "Capacitor", "ember-cli-build.js": "Ember", "androidmanifest.xml": "Android app", "podfile": "iOS app",
+}
+BACKEND_MARKERS = {"pom.xml", "build.gradle", "build.gradle.kts", "go.mod", "requirements.txt", "pyproject.toml", "composer.json", "gemfile", "cargo.toml"}
+VIEW_EXTS = {".jsp", ".jspx", ".jsf", ".xhtml"}
 NOISE_DIRS = {
     "test", "tests", "__tests__", "spec", "e2e", "examples", "example", "docs",
     "doc", "docs_src", "fixtures", "samples", "sample", "testdata", "mocks",
@@ -147,6 +173,57 @@ def parse_compose_services(text):
     return names
 
 
+def package_deps(path):
+    """Dependency names from a package.json (empty set when unreadable)."""
+    try:
+        if os.path.getsize(path) > 1024 * 1024:
+            return set()
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return set()
+    deps = set()
+    if isinstance(data, dict):
+        for k in ("dependencies", "devDependencies", "peerDependencies"):
+            if isinstance(data.get(k), dict):
+                deps.update(data[k].keys())
+    return deps
+
+
+def frontend_label(dirpath, reldir, dirnames, filenames):
+    """Return a label when this folder is frontend code that must not be analyzed, else None."""
+    lnames = {f.lower(): f for f in filenames}
+    backend_here = any(n in BACKEND_MARKERS or n.endswith(".csproj") for n in lnames)
+    if "package.json" in lnames:
+        deps = package_deps(os.path.join(dirpath, lnames["package.json"]))
+        if deps and not (deps & BACKEND_DEPS):
+            for dep, label in FRONTEND_DEPS.items():
+                if dep in deps:
+                    return label + " (package.json)"
+    if not backend_here:
+        for fname, label in FRONTEND_FILES.items():
+            if fname in lnames:
+                return label
+    if "pubspec.yaml" in lnames and "flutter" in read_head(os.path.join(dirpath, lnames["pubspec.yaml"]), 8192).lower():
+        return "Flutter"
+    if any(d.endswith((".xcodeproj", ".xcworkspace")) for d in dirnames):
+        return "iOS app"
+    if any(os.path.splitext(n)[1] in VIEW_EXTS for n in lnames):
+        return "JSP/JSF pages"
+    low = reldir.lower()
+    if low.endswith("src/main/resources/templates"):
+        return "server-side templates or email views"
+    if low.endswith(("src/main/resources/static", "src/main/resources/public")):
+        return "static web assets"
+    if os.path.basename(low) == "app" and os.path.basename(os.path.dirname(low)) == "src" and sum(1 for n in lnames if n.endswith(".component.ts")) >= 2:
+        return "Angular components"
+    if sum(1 for n in lnames if n.endswith(".vue")) >= 3:
+        return "Vue components"
+    if sum(1 for n in lnames if n.endswith(".svelte")) >= 3:
+        return "Svelte components"
+    return None
+
+
 def is_manifest(lname):
     if lname in MANIFESTS:
         return True
@@ -158,7 +235,7 @@ def scan(root):
         "files": 0, "dirs": 0, "truncated": False,
         "langs": {}, "manifests": [], "infra": [], "gateways": [],
         "envs": [], "entries": [], "compose_services": [],
-        "k8s": 0, "tf": 0, "markers": {}, "sniffed": 0,
+        "k8s": 0, "tf": 0, "markers": {}, "sniffed": 0, "ignored": [],
     }
 
     def mark(dirrel, label):
@@ -175,6 +252,12 @@ def scan(root):
         reldir = "." if reldir == "." else reldir
         parts = [] if reldir == "." else reldir.split("/")
         in_noise = any(p.lower() in NOISE_DIRS for p in parts)
+
+        fl = frontend_label(dirpath, reldir, dirnames, filenames)
+        if fl:  # frontend code is never scanned: list it once and do not descend
+            st["ignored"].append(("(project root)" if reldir == "." else reldir, fl))
+            dirnames[:] = []
+            continue
 
         for fn in sorted(filenames):
             if st["files"] >= MAX_FILES:
@@ -276,12 +359,24 @@ def build_report(root, st):
     add("== repo-visualizer inventory ==")
     add("Path: " + root)
     note = " (stopped at %d files)" % MAX_FILES if st["truncated"] else ""
-    add("Scanned %d files in %d dirs%s; skipped node_modules, .git, dist, build, venv, vendor, binaries."
+    add("Scanned %d files in %d dirs%s; skipped node_modules, .git, dist, build, venv, vendor, binaries, frontends."
         % (st["files"], st["dirs"], note))
     add("")
 
+    ign = sorted(st["ignored"], key=lambda t: (t[0].count("/"), t[0]))
+    listing_ignored = ["%s  [%s]" % (p, kind) for p, kind in ign]
+    add("Ignored frontends (not analyzed; all are the single Client / User node):")
+    if not listing_ignored:
+        add("  none found")
+    else:
+        for it in listing_ignored[:5]:
+            add("  " + it)
+        if len(listing_ignored) > 5:
+            add("  ... +%d more" % (len(listing_ignored) - 5))
+    add("")
+
     # languages
-    add("Languages (by file count):")
+    add("Languages (by file count, frontends excluded):")
     langs = sorted(st["langs"].items(), key=lambda kv: (-kv[1], kv[0]))
     if langs:
         shown = ["%s %d" % kv for kv in langs[:8]]
@@ -305,7 +400,7 @@ def build_report(root, st):
 
     # manifests (shallowest first)
     mans = sorted(st["manifests"], key=lambda p: (p.count("/"), p))
-    listing("Manifests:", mans, 12)
+    listing("Manifests:", mans, 8)
 
     # infra
     infra_items = sorted(st["infra"], key=lambda t: (t[0].count("/"), t[0]))
@@ -314,7 +409,7 @@ def build_report(root, st):
         lines.append("(+%d more Kubernetes manifests)" % (st["k8s"] - 6))
     if st["tf"]:
         lines.append("%d Terraform file(s)" % st["tf"])
-    listing("Docker / Compose / Kubernetes / IaC:", lines, 12)
+    listing("Docker / Compose / Kubernetes / IaC:", lines, 8)
 
     if st["compose_services"]:
         seen, names = set(), []
@@ -327,13 +422,13 @@ def build_report(root, st):
         add("")
 
     gws = sorted(set(st["gateways"]), key=lambda t: (t[0].count("/"), t[0]))
-    listing("Gateway / proxy configs:", ["%s  [%s]" % g for g in gws], 6)
+    listing("Gateway / proxy configs:", ["%s  [%s]" % g for g in gws], 4)
 
     listing("Env templates (variable names only; real .env files not read):",
-            sorted(st["envs"], key=lambda p: (p.count("/"), p)), 4)
+            sorted(st["envs"], key=lambda p: (p.count("/"), p)), 3)
 
     entries = sorted(set(st["entries"]), key=lambda p: (p.count("/"), p))
-    listing("Likely entry points:", entries, 12)
+    listing("Likely entry points:", entries, 8)
 
     # service folders
     svc = []
@@ -352,7 +447,7 @@ def build_report(root, st):
     title = "Folders that look like separate services/packages:"
     if len(svc) <= 1 and not st["compose_services"]:
         title += "  (likely a single app)"
-    listing(title, items, 15)
+    listing(title, items, 10)
 
     while out and out[-1] == "":
         out.pop()

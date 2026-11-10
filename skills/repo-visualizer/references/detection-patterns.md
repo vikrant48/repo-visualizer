@@ -24,6 +24,7 @@ Errors, Config.**
 11. [Infrastructure and gateway files](#11-infrastructure-and-gateway-files)
 12. [Cross-framework patterns](#12-cross-framework-patterns)
 13. [Proven vs uncertain](#13-proven-vs-uncertain)
+14. [Client, entry points, and callers](#14-client-entry-points-and-callers)
 
 ---
 
@@ -308,6 +309,9 @@ Global providers registered via `APP_GUARD`, `APP_INTERCEPTOR`, `APP_PIPE`,
 1. Servlet **Filters** (`OncePerRequestFilter`, `@Component` + `@Order`,
    `FilterRegistrationBean#setOrder`). Spring Security is a filter chain here
    (`SecurityFilterChain`), early because of its low order value.
+   `http.addFilterBefore/After(f, Anchor.class)` positions `f` relative to the anchor; several filters added
+   with the same anchor run in the order they were added, and a `CorsFilter` bean or `http.cors()` runs
+   before the security filters. Record the order you can prove and note the rest in `meta.limitations`.
 2. `DispatcherServlet`
 3. `HandlerInterceptor.preHandle` (registered in `WebMvcConfigurer.
    addInterceptors`, in registration order)
@@ -335,6 +339,8 @@ Global providers registered via `APP_GUARD`, `APP_INTERCEPTOR`, `APP_PIPE`,
   `@Cacheable` (hit/miss is implicit: method body runs only on a miss),
   `@CachePut`, `@CacheEvict` (invalidation), `CacheManager`, `RedisTemplate`/
   `StringRedisTemplate`, Caffeine/Ehcache. `@EnableCaching` must be present.
+  `@Cacheable` has no explicit get or set line: cite the annotation line for both the `cache-read` and
+  `cache-write` edges.
 
 **Service calls**
 - `RestTemplate`, `WebClient`, `RestClient`, OpenFeign `@FeignClient`, gRPC
@@ -587,3 +593,43 @@ and the write-back as its own response-direction step on the cache node.
 
 If a pattern here is absent in the project, omit that component. Never add a
 component because a typical architecture would have one.
+
+---
+
+## 14. Client, entry points, and callers
+
+This tool maps the **backend only**.
+
+**Frontends are not analyzed.** Never read Angular, React, Vue, Svelte, Next/Nuxt, mobile (React Native, Flutter,
+Android, iOS), JSP/JSF, or server-side template code (Thymeleaf, Razor, Blade, ERB, ...). `inventory.py` lists those
+folders under "Ignored frontends". Every browser, app, and page is ONE node:
+`{ "id": "client", "name": "Client / User", "type": "client", "tier": "client" }`. A compose/k8s service that only
+serves static frontend files (an nginx or CDN container) is part of the client, not a node. The client's evidence is
+backend code: the gateway `listen`/`location` config, route definitions, CORS allowed origins, the security config.
+
+**Where the client connects (the backend entry point):**
+- A gateway or proxy exists (nginx, Spring Cloud Gateway, Kong, Traefik, Envoy, API Gateway, Ingress):
+  `client -> gateway`.
+- No gateway: `client -> the service that exposes the endpoint` (the controller, router, or handler component).
+  If several services expose endpoints, there is one edge to each of them.
+- A monolith with many controllers: connect the client to the module `service` nodes that own the controllers, with each
+  controller's endpoints on its module's edge. If the modules are not separate in code, use ONE `service` node for the
+  controller layer (for example "REST controllers") as the entry service. Never one edge per endpoint, never one per class.
+
+**One edge per entry point.** List every public endpoint behind it in `endpoints` (method, full path including
+router and gateway prefixes, evidence); never one edge per endpoint. Enumerate endpoints from the route
+definitions in the framework sections above (controller annotations, routers, `urls.py`, `routes/*.php`,
+`routes.rb`, gateway `location` blocks and routes). Endpoints that only answer callers (below) go on the
+caller's edge instead.
+
+**External callers** are anything other than a browser or app that calls the backend. Give each its own
+`external-caller` node and one edge with its endpoints, so it is not hidden:
+- Webhooks from providers (Stripe, Razorpay, GitHub, Twilio): paths like `/webhook`, `/webhooks/*`, `/callback`,
+  `/ipn`, and handlers that verify a signature header (`Stripe-Signature`, `X-Razorpay-Signature`, `X-Hub-Signature`).
+- Scheduled triggers outside the app: a Kubernetes `CronJob`, Cloud Scheduler, a CI schedule, or crontab/Jenkins
+  calling an endpoint (look for `curl` or an HTTP step in the manifest).
+- Other systems: partner or internal systems using API keys or mTLS against `/internal/**` or `/partner/**` routes.
+- Not callers: in-process schedulers (`@Scheduled`, node-cron, Celery beat inside the app) and queue consumers
+  (the consumer is a `service` and the queue is a datastore).
+- A provider that is both called and calls back (Razorpay API out, Razorpay webhook in) is two nodes: an
+  `external-api` for the outbound calls and an `external-caller` for the webhook.

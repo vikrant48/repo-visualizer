@@ -1,11 +1,13 @@
 # repo-visualizer
 
-A [Claude Code](https://claude.com/claude-code) plugin that reads your codebase and generates an interactive page, `architecture.html`, showing:
+A [Claude Code](https://claude.com/claude-code) plugin that reads your **backend** code and generates an interactive page, `architecture.html`, showing:
 
-- **The full journey of a request:** user, gateway, middleware (auth, CORS, rate limit, validation, security headers), services, cache, database or queue, and the response travelling back to the user.
+- **The full journey of a request:** the Client / User, gateway, middleware (auth, CORS, rate limit, validation, security headers), services, cache, database or queue, and the response travelling back to the client.
 - **How all your services connect**, as one overview map.
 
-Every component, connection, and step in the page is backed by a `file:line` reference to your code. Anything Claude suspects but cannot prove is listed separately as *uncertain* instead of being drawn as fact.
+It is backend-only: frontend code (Angular, React, Vue, mobile apps, JSP/JSF pages) is never read, and every frontend is one node, **Client / User**, connected to your gateway (or to the service that exposes the endpoint) by a single line that lists its endpoints. Anything else that calls your backend, such as a payment webhook or an external cron, gets its own node.
+
+Every component, connection, and step in the page is backed by a `file:line` reference to your backend code. Anything Claude suspects but cannot prove is listed separately as *uncertain* instead of being drawn as fact.
 
 ## Install
 
@@ -24,6 +26,8 @@ claude plugin install repo-visualizer@repo-visualizer
 ```
 
 **Requirements:** Python 3.8+ (`python3` or `python`) on your PATH. No packages to install.
+
+**New to this, or using the VS Code extension?** Follow the step-by-step [Getting started guide](docs/GETTING-STARTED.md). The extension's chat panel may not accept `/plugin`, and the guide shows the terminal route that works.
 
 ## Usage
 
@@ -45,7 +49,7 @@ For large projects and monorepos, Claude first renders an overview built from yo
 
 | View | What it shows |
 |---|---|
-| **Overview map** | Every component and connection, left to right (user to databases), with the middleware grouped as a security layer. Color and shape per component type, with a legend. |
+| **Overview map** | Level 1 shows frontends, services, data stores and external systems, left to right, with a shield on each service showing how many middleware protect it. Click a service to expand its middleware chain (in order) and only its direct connections; everything else fades. Parallel connections are merged into one line with a count. Services can be grouped into collapsible domain boxes. Every component is classified by business domain, tier (which column it sits in) and importance (how many flows pass through it); middleware name the service they belong to. Hover a node to highlight its neighbours; use Filters for component types, connection kinds and importance; unconfirmed links are off by default; search jumps to a node and focuses its neighbourhood. |
 | **Request journey** | Pick a flow, then step through it. A dot travels forward along the request path and back along the response path. Toggle branches such as cache hit vs miss, or an early 401. |
 | **Sequence diagram** | The same flow as a sequence diagram. |
 
@@ -56,7 +60,7 @@ In every view: click a component, connection, or step to see what it does and it
 - Analysis happens locally in your Claude Code session. The plugin makes no network calls of its own.
 - Claude only creates `architecture.json` and `architecture.html`. It does not modify your code, and the render script refuses to overwrite an `architecture.html` it did not create.
 - Secrets are never copied into the output: only environment variable *names*. Real `.env` files are not read, only `.env.example`-style templates, and the render script rejects output that looks like a secret.
-- Opening `architecture.html` loads four pinned JavaScript libraries from the jsDelivr CDN (Cytoscape.js, ELK, cytoscape-elk, Mermaid), checked with Subresource Integrity hashes. The overview map and sequence diagram need an internet connection to draw. The request journey and the text fallback work offline. The page contains your architecture data, so treat it like your source code when sharing it.
+- Opening `architecture.html` loads three pinned JavaScript libraries from the jsDelivr CDN (Cytoscape.js, ELK, Mermaid), checked with Subresource Integrity hashes. The overview map and sequence diagram need an internet connection to draw. The request journey and the text fallback work offline. The page contains your architecture data, so treat it like your source code when sharing it.
 
 ## Limitations
 

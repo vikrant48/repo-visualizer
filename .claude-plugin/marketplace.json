@@ -10,7 +10,7 @@
       "name": "repo-visualizer",
       "source": "./",
       "description": "Generate an interactive HTML visualization of request flow and service connections for any codebase.",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "category": "documentation",
       "tags": ["visualization", "architecture", "diagram"]
     }

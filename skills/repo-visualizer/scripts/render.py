@@ -15,6 +15,7 @@ Usage:
 Exit codes: 0 ok | 1 validation errors | 2 usage or I/O error
 """
 import argparse
+import difflib
 import json
 import os
 import re
@@ -27,15 +28,21 @@ MARKER = 'id="arch-data"'          # present in every file this script writes
 MAX_SHOWN = 60                     # cap on printed errors
 MAX_FS_BYTES = 20 * 1024 * 1024    # skip line-count check for huge files
 
-NODE_TYPES = ["user", "frontend", "gateway", "middleware", "service", "database",
+NODE_TYPES = ["client", "external-caller", "gateway", "middleware", "service", "database",
               "cache", "queue", "external-api", "storage"]
 CATEGORIES = ["auth", "security", "cors", "rate-limit", "validation", "logging",
               "error-handler"]
-EDGE_KINDS = ["http", "grpc", "db-query", "cache-read", "cache-write", "publishes",
+EDGE_KINDS = ["http", "grpc", "call", "other", "db-query", "cache-read", "cache-write", "publishes",
               "subscribes", "middleware-next", "response"]
 DIRECTIONS = ["request", "response"]
-ENDPOINT_TYPES = ("user", "frontend")
+ENDPOINT_TYPES = ("client", "external-caller")
+LEGACY_CLIENT_TYPES = ("user", "frontend")
+CLIENT_NAME = "Client / User"
+FRONTEND_FILE_RE = re.compile(r"(\.(vue|svelte|jsx|tsx|jsp|jspx|jsf|xhtml)$)|(\.component\.(ts|html|scss|css)$)", re.I)
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+TIERS = ["client", "caller", "gateway", "service", "datastore", "external"]
+TYPE_TIER = {"client": "client", "external-caller": "caller", "gateway": "gateway", "middleware": "service", "service": "service",
+             "database": "datastore", "cache": "datastore", "queue": "datastore", "storage": "datastore", "external-api": "external"}
 
 SECRET_PATTERNS = [
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
@@ -71,6 +78,7 @@ class Validator:
         self.errors = []
         self.warnings = []
         self._lines = {}
+        self._text = {}
 
     def err(self, path, msg):
         self.errors.append("%s: %s" % (path, msg))
@@ -107,6 +115,9 @@ class Validator:
                 self.err(p, 'must be an object like {"file": "src/app.ts", "line": 12}')
                 continue
             f, ln = item.get("file"), item.get("line")
+            if is_str(f) and FRONTEND_FILE_RE.search(f):
+                self.warn(p + ".file", '"%s" looks like frontend code. This tool maps the backend only: cite backend evidence '
+                                       "(the route definition, gateway config, CORS or security config)" % f)
             ok_file = True
             if not is_str(f):
                 self.err(p + ".file", "is required and must be a non-empty string")
@@ -142,6 +153,23 @@ class Validator:
                     n = self.line_count(ap)
                     if n is not None and ln > n:
                         self.err(p + ".line", '%d is past the end of "%s" (%d lines)' % (ln, f, n))
+                    elif n is not None:
+                        txt = self.get_line(ap, ln)
+                        if txt is not None and not txt.strip():
+                            self.warn(p + ".line", 'line %d of "%s" is empty: the evidence is probably off by a few lines' % (ln, f))
+                        elif txt is not None and re.fullmatch(r"[\s{}()\[\];,]+", txt):
+                            self.warn(p + ".line", 'line %d of "%s" is only punctuation (%s): the evidence is probably off by a few lines' % (ln, f, txt.strip()))
+
+    def get_line(self, abspath, n):
+        lines = self._text.get(abspath)
+        if lines is None:
+            try:
+                with open(abspath, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.read().splitlines() if os.path.getsize(abspath) <= MAX_FS_BYTES else []
+            except OSError:
+                lines = []
+            self._text[abspath] = lines
+        return lines[n - 1] if 0 < n <= len(lines) else None
 
     def check_secrets(self, path, value):
         if isinstance(value, str):
@@ -183,12 +211,14 @@ class Validator:
 
         self.check_project(data.get("project"))
         node_ids, node_type = self.check_nodes(data.get("nodes"))
-        edge_pairs = self.check_edges(data.get("edges"), node_ids)
+        edge_pairs = self.check_edges(data.get("edges"), node_ids, node_type)
         self.check_flows(data.get("flows"), node_ids, node_type, edge_pairs)
+        self.check_importance(data, node_ids)
         self.check_uncertain(data.get("uncertain"), node_ids, edge_pairs)
         self.check_meta(data.get("meta"))
         self.check_secrets("$", data)
         self.check_orphans(data, node_ids)
+        self.check_middleware_owners(data, node_ids, node_type)
 
     def check_project(self, p):
         if not isinstance(p, dict):
@@ -212,7 +242,8 @@ class Validator:
             return ids, types
         if not nodes:
             self.err("nodes", "is empty: at least one component is required")
-        seen = {}
+        seen, owners = {}, []
+        self.owner_of = {}
         for i, n in enumerate(nodes):
             p = "nodes[%d]" % i
             if not isinstance(n, dict):
@@ -225,11 +256,19 @@ class Validator:
             if not is_str(n.get("name")):
                 self.err(p + ".name", "is required and must be a non-empty string")
             t = n.get("type")
-            if t not in NODE_TYPES:
+            if t in LEGACY_CLIENT_TYPES:
+                self.err(p + ".type", 'type "%s" is not used any more. Every frontend, browser and app is ONE node: '
+                                      '{"id": "client", "name": "%s", "type": "client", "tier": "client"}. Do not create nodes for frontend apps' % (t, CLIENT_NAME))
+            elif t not in NODE_TYPES:
                 self.err(p + ".type", 'is "%s"; must be one of: %s' % (t, quoted_list(NODE_TYPES)))
             else:
                 if nid:
                     types[nid] = t
+            if t == "client":
+                if nid and nid != "client":
+                    self.err(p + ".id", 'the client node\'s id must be "client" (got "%s")' % nid)
+                if n.get("name") != CLIENT_NAME:
+                    self.err(p + ".name", 'the client node must be named exactly "%s" (got %r)' % (CLIENT_NAME, n.get("name")))
             cat = n.get("category")
             if t == "middleware":
                 if cat not in CATEGORIES:
@@ -239,18 +278,55 @@ class Validator:
                 self.err(p + ".category", 'is only allowed when type is "middleware" (this node is "%s"); remove it' % t)
             if "tech" in n and n["tech"] is not None and not isinstance(n["tech"], str):
                 self.err(p + ".tech", "must be a string when present")
+            if not is_str(n.get("domain")):
+                self.err(p + ".domain", 'is required: the business area it belongs to (for example "recruit", "payments", "platform"), '
+                                        "inferred from names, folders and package names")
+            tier = n.get("tier")
+            if tier not in TIERS:
+                self.err(p + ".tier", 'is %r; must be one of: %s (it decides the overview column)' % (tier, quoted_list(TIERS)))
+            elif t in TYPE_TIER and tier != TYPE_TIER[t]:
+                self.warn(p + ".tier", 'is "%s", but type "%s" is normally in tier "%s". Fine if intended (for example an external service '
+                                       "you do not own); otherwise fix it" % (tier, t, TYPE_TIER[t]))
+            imp = n.get("importance")
+            if not is_int(imp) or not 1 <= imp <= 3:
+                self.err(p + ".importance", "is %r; must be an integer 1 to 3 (how many flows pass through it: 3 = most, 1 = one or none)" % (imp,))
+            if t == "middleware":
+                if not is_str(n.get("owner")):
+                    self.err(p + ".owner", "is required for middleware: the id of the service it belongs to")
+                else:
+                    owners.append((p + ".owner", n["owner"]))
+                    if nid:
+                        self.owner_of[nid] = n["owner"]
+            elif n.get("owner") is not None:
+                self.err(p + ".owner", 'is only allowed on middleware (this node is "%s"); remove it' % t)
             if n.get("group") is not None:
-                if not is_str(n["group"]):
-                    self.err(p + ".group", "must be a non-empty string (the owning service) when present")
-                elif t != "middleware":
-                    self.warn(p + ".group", 'is only used for middleware nodes (this one is "%s"); it is ignored' % t)
+                self.warn(p + ".group", 'is deprecated and ignored: use "owner" (the id of the service the middleware belongs to)')
             if not is_str(n.get("description")):
                 self.err(p + ".description", "is required: one sentence on what it does in this project")
             self.check_evidence(p + ".evidence", n.get("evidence"))
+        clients = [i for i, ty in types.items() if ty == "client"]
+        if len(clients) > 1:
+            self.err("nodes", 'only ONE client node is allowed (found %s): every browser, app and frontend is the single "%s" node' % (quoted_list(clients), CLIENT_NAME))
+        for p, o in owners:
+            if o not in ids:
+                self.err(p, 'node id "%s" does not exist in "nodes"%s' % (o, self.suggest(o, ids)))
+            elif types.get(o) != "service":
+                self.err(p, '"%s" is a "%s" node; a middleware owner must be a "service"' % (o, types.get(o)))
+        forms = {}
+        for n in ids.values():
+            if is_str(n.get("domain")):
+                forms.setdefault(re.sub(r"[\s_-]+", "", n["domain"].lower()), set()).add(n["domain"].strip())
+        for fs in forms.values():
+            if len(fs) > 1:
+                self.warn("nodes", "the same domain is spelled several ways (%s); use one spelling everywhere" % ", ".join(sorted(repr(f) for f in fs)))
+        if len(nodes) >= 8 and len(forms) > max(6, len(nodes) // 2):
+            self.warn("nodes", "has %d different domains for %d nodes; group related components under fewer, broader business areas" % (len(forms), len(nodes)))
         return ids, types
 
-    def check_edges(self, edges, node_ids):
+    def check_edges(self, edges, node_ids, node_type):
         pairs = set()
+        entry_seen = {}
+        has_gateway = any(v == "gateway" for v in node_type.values())
         if edges is None:
             return pairs
         if not isinstance(edges, list):
@@ -273,6 +349,21 @@ class Validator:
             if not is_str(e.get("label")):
                 self.err(p + ".label", 'is required (e.g. "POST /login", "GET user:{email}")')
             self.check_evidence(p + ".evidence", e.get("evidence"))
+            src_t, dst_t = node_type.get(s) if is_str(s) else None, node_type.get(t) if is_str(t) else None
+            if src_t in ENDPOINT_TYPES:
+                if dst_t is not None and dst_t not in ("gateway", "service"):
+                    self.err(p + ".target", 'a %s connects to the backend entry point: a "gateway" or a "service", not a "%s"' % (src_t, dst_t))
+                elif src_t == "client" and has_gateway and dst_t == "service":
+                    self.warn(p, 'the client connects straight to service "%s" although the project has a gateway. If traffic really goes '
+                                 "through the gateway, make this edge client -> gateway" % t)
+                self.check_endpoints(p + ".endpoints", e.get("endpoints"))
+                if is_str(s) and is_str(t):
+                    if (s, t) in entry_seen:
+                        self.err(p, 'duplicate of %s: use ONE edge per entry point and list every endpoint in its "endpoints"' % entry_seen[(s, t)])
+                    else:
+                        entry_seen[(s, t)] = "edges[%d]" % i
+            elif e.get("endpoints") is not None:
+                self.err(p + ".endpoints", "is only allowed on edges that start at the client or an external caller")
             if is_str(s) and is_str(t):
                 pairs.add((s, t))
                 key = (s, t, e.get("kind"), e.get("label"))
@@ -281,11 +372,34 @@ class Validator:
                 seen.add(key)
         return pairs
 
+    def check_endpoints(self, path, eps):
+        if not isinstance(eps, list) or not eps:
+            self.err(path, 'is required on edges from the client or an external caller: a list of {"method", "path", "evidence"}, '
+                           "one entry per endpoint behind this entry point")
+            return
+        seen = set()
+        for i, ep in enumerate(eps):
+            pp = "%s[%d]" % (path, i)
+            if not isinstance(ep, dict):
+                self.err(pp, 'must be an object like {"method": "POST", "path": "/login", "evidence": [...]}')
+                continue
+            m, pth = ep.get("method"), ep.get("path")
+            if not (is_str(m) and re.match(r"^[A-Z][A-Z0-9_-]{1,11}$", m)):
+                self.err(pp + ".method", 'is %r; use the HTTP method or protocol in capitals, e.g. "GET", "POST", "WS", "GRPC"' % (m,))
+            if not is_str(pth):
+                self.err(pp + ".path", 'is required: the full public path, e.g. "/api/users/{id}"')
+            elif (m, pth) in seen:
+                self.err(pp, 'duplicate endpoint "%s %s"' % (m, pth))
+            seen.add((m, pth))
+            self.check_evidence(pp + ".evidence", ep.get("evidence"))
+
     @staticmethod
     def suggest(value, node_ids):
         if not isinstance(value, str):
             return ""
-        close = [n for n in node_ids if value.lower() in n.lower() or n.lower() in value.lower()]
+        close = difflib.get_close_matches(value, list(node_ids), n=3, cutoff=0.6)
+        if not close:
+            close = [n for n in node_ids if value.lower() in n.lower() or n.lower() in value.lower()]
         return " (did you mean %s?)" % quoted_list(close[:3]) if close else ""
 
     def check_flows(self, flows, node_ids, node_type, edge_pairs):
@@ -326,19 +440,19 @@ class Validator:
             if steps and all(isinstance(s, dict) for s in steps) and not explained:
                 first, last = steps[0], steps[-1]
                 if node_type.get(first.get("node")) not in ENDPOINT_TYPES or first.get("direction") != "request":
-                    self.err(p + ".steps[0]", 'the main path must start with a "request" step at a user or frontend node '
-                                              "(or explain why not in the flow's \"notes\")")
-                if node_type.get(last.get("node")) not in ENDPOINT_TYPES or last.get("direction") != "response":
+                    self.err(p + ".steps[0]", 'every flow starts with a "request" step at the "client" node ("%s"), or at an external-caller node '
+                                              "for webhooks and scheduled calls (or explain why not in the flow's \"notes\")" % CLIENT_NAME)
+                if last.get("direction") != "response" or last.get("node") != first.get("node"):
                     self.err(p + ".steps[%d]" % (len(steps) - 1),
-                             'the main path must end with a "response" step back at a user or frontend node. '
-                             "Trace the full return path, or explain in the flow's \"notes\" (e.g. fire-and-forget)")
+                             'the main path must end with a "response" step back at the node where the flow started ("%s"). '
+                             "Trace the full return path, or explain in the flow's \"notes\" (e.g. fire-and-forget)" % first.get("node"))
             branches = f.get("branches")
             branch_ids = {}
             if branches is not None and not isinstance(branches, list):
                 self.err(p + ".branches", "must be a list when present")
                 branches = []
             for b_i, b in enumerate(branches or []):
-                self.check_branch("%s.branches[%d]" % (p, b_i), b, node_ids, node_type, step_ids, main_idx, branch_ids, explained)
+                self.check_branch("%s.branches[%d]" % (p, b_i), b, node_ids, node_type, step_ids, main_idx, branch_ids, explained, steps[0].get("node") if steps and isinstance(steps[0], dict) else None)
             self.check_hops(p, f, node_ids, node_type, edge_pairs)
 
     def check_step(self, p, st, node_ids, step_ids):
@@ -367,7 +481,7 @@ class Validator:
         self.check_evidence(p + ".evidence", st.get("evidence"))
         return sid
 
-    def check_branch(self, p, b, node_ids, node_type, step_ids, main_idx, branch_ids, explained):
+    def check_branch(self, p, b, node_ids, node_type, step_ids, main_idx, branch_ids, explained, start_node=None):
         if not isinstance(b, dict):
             self.err(p, "must be an object")
             return
@@ -411,19 +525,23 @@ class Validator:
                     self.err(p + ".outcome.description", "must be a string")
         if rejoin is None and "rejoin" in b and steps and not explained and isinstance(steps[-1], dict):
             last = steps[-1]
-            if node_type.get(last.get("node")) not in ENDPOINT_TYPES or last.get("direction") != "response":
+            if last.get("direction") != "response" or (start_node is not None and last.get("node") != start_node):
                 self.err("%s.steps[%d]" % (p, len(steps) - 1),
                          'a branch with "rejoin": null ends the journey, so its last step must be a "response" '
-                         "back at a user or frontend node (or explain in the flow's \"notes\")")
+                         'back at the node where the flow started ("%s"), or explain in the flow\'s "notes"' % start_node)
 
-    @staticmethod
-    def linked(x, y, node_type, edge_pairs):
+    def linked(self, x, y, node_type, edge_pairs):
         """True if x and y share an edge (either way) or are linked through
         middleware-only nodes (middleware that does nothing on that side)."""
         adj = {}
         for a, b in edge_pairs:
             adj.setdefault(a, set()).add(b)
             adj.setdefault(b, set()).add(a)
+        ow = self.owner_of
+        if node_type.get(y) == "middleware" and ow.get(y) and ((x, ow[y]) in edge_pairs or (ow[y], x) in edge_pairs):
+            return True  # an entry edge to the owning service covers the hop into its middleware chain
+        if node_type.get(x) == "middleware" and ow.get(x) and ((y, ow[x]) in edge_pairs or (ow[x], y) in edge_pairs):
+            return True
         seen, stack = {x}, [x]
         while stack:
             cur = stack.pop()
@@ -494,6 +612,59 @@ class Validator:
         for k in ("skipped", "limitations"):
             if k in meta and (not isinstance(meta[k], list) or not all(isinstance(x, str) for x in meta[k])):
                 self.err("meta." + k, "must be a list of strings")
+
+    def check_importance(self, data, node_ids):
+        """importance = how many flows pass through the node; warn only when it is wildly off."""
+        flows = [f for f in (data.get("flows") or []) if isinstance(f, dict)]
+        if not flows:
+            return
+        count = {}
+        for f in flows:
+            seen = set()
+            for s in f.get("steps") or []:
+                if isinstance(s, dict):
+                    seen.add(s.get("node"))
+            for b in f.get("branches") or []:
+                for s in (b.get("steps") or []) if isinstance(b, dict) else []:
+                    if isinstance(s, dict):
+                        seen.add(s.get("node"))
+            for nid in seen:
+                count[nid] = count.get(nid, 0) + 1
+        for nid, n in node_ids.items():
+            imp = n.get("importance")
+            if not is_int(imp) or not 1 <= imp <= 3:
+                continue
+            c = count.get(nid, 0)
+            share = c / float(len(flows))
+            expected = 3 if share >= 0.6 else (2 if (c >= 2 or share >= 0.25) else 1)
+            if abs(imp - expected) >= 2:
+                self.warn("nodes(%s).importance" % nid, "is %d, but %d of %d flows pass through it (about %d expected). "
+                                                        "Importance counts the flows whose steps go through the node" % (imp, c, len(flows), expected))
+
+    def check_middleware_owners(self, data, node_ids, node_type):
+        """The overview expands a service's middleware chain in order, so the chain's edges should reach the owner."""
+        out = {}
+        for e in data.get("edges") or []:
+            if isinstance(e, dict) and e.get("kind") != "response":
+                out.setdefault(e.get("source"), []).append(e.get("target"))
+        for mid, n in node_ids.items():
+            owner = n.get("owner")
+            if node_type.get(mid) != "middleware" or not is_str(owner) or node_type.get(owner) != "service":
+                continue
+            if n.get("category") == "error-handler":
+                continue  # an exception handler wraps the handlers; it is not a hop in the request chain
+            seen, stack, found = {mid}, [mid], False
+            while stack and not found:
+                for t in out.get(stack.pop(), []):
+                    if t == owner:
+                        found = True
+                        break
+                    if t not in seen and node_type.get(t) == "middleware":
+                        seen.add(t)
+                        stack.append(t)
+            if not found:
+                self.warn("nodes(%s)" % mid, 'no chain of edges leads from this middleware to its owner "%s". Link the chain with "middleware-next" edges '
+                                             "(entry -> first middleware -> ... -> last middleware -> service) so the overview can show it in order" % owner)
 
     def check_orphans(self, data, node_ids):
         used = set()
