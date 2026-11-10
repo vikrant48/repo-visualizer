@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endpoint viewer</title>
+<style nonce="{{NONCE}}">
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16181d;--mute:#5b6270;--line:#d9dde4;--accent:#2457d6;--ok:#13795b;--okbg:#e2f5ee;--warn:#9a5b00;--warnbg:#fdf0d8;--bad:#b3261e;--badbg:#fbe4e2;--info:#1f5fa8;--infobg:#e3eefb;--code:#eef0f4;--resp:#13795b}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#101216;--panel:#181b21;--ink:#e8eaee;--mute:#9aa1ae;--line:#2b303a;--accent:#7aa2ff;--ok:#5fd3a8;--okbg:#12342a;--warn:#f0b75a;--warnbg:#3a2b10;--bad:#ff8b82;--badbg:#3d1815;--info:#8fbaf0;--infobg:#17283d;--code:#20242c;--resp:#5fd3a8}}
+:root[data-theme=dark]{--bg:#101216;--panel:#181b21;--ink:#e8eaee;--mute:#9aa1ae;--line:#2b303a;--accent:#7aa2ff;--ok:#5fd3a8;--okbg:#12342a;--warn:#f0b75a;--warnbg:#3a2b10;--bad:#ff8b82;--badbg:#3d1815;--info:#8fbaf0;--infobg:#17283d;--code:#20242c;--resp:#5fd3a8}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1560px;margin:0 auto;padding:18px 16px 140px}
+h1{font-size:20px;margin:0}h2{font-size:16px;margin:0}h3{font-size:12px;margin:12px 0 6px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+form{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text],select{padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit}
+input[type=text]{flex:1 1 320px;min-width:0}
+button{padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{color:var(--mute);font-size:13px;margin:6px 0 0}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+.stages{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:14px 0 4px;padding:0;list-style:none}
+.stages li{padding:4px 11px;border:1px solid var(--line);border-radius:99px;font-size:13px;color:var(--mute)}
+.stages li.arrow{border:0;padding:0 2px}
+.stages li.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.stages li.past{color:var(--ok);border-color:var(--ok)}
+.stages li.opt{opacity:.55}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:12px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+.chip.ok{color:var(--ok);background:var(--okbg);border-color:transparent}.chip.warn{color:var(--warn);background:var(--warnbg);border-color:transparent}.chip.bad{color:var(--bad);background:var(--badbg);border-color:transparent}.chip.info{color:var(--info);background:var(--infobg);border-color:transparent}
+.method{font-weight:700;color:var(--accent)}
+.badge{padding:0;width:22px;height:22px;line-height:20px;border-radius:50%;text-align:center;font-size:13px;font-weight:700;border:1.5px solid currentColor;background:transparent;flex:none}
+.badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}.badge.bad{color:var(--bad)}.badge.inh{opacity:.55;border-style:dotted}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute);align-items:center;margin-top:8px}
+.legend .badge{pointer-events:none;display:inline-block;width:18px;height:18px;line-height:16px;font-size:11px}
+.hist{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0;padding:0;list-style:none}
+.hist button{display:flex;gap:6px;align-items:center;font-size:13px;padding:5px 10px}
+.hist button[aria-current=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tabs button[aria-selected=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.s2{border-left:4px solid var(--ok)}.s3{border-left:4px solid var(--info)}.s4{border-left:4px solid var(--warn)}.s5{border-left:4px solid var(--bad)}
+.panels{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);align-items:start}
+@media (min-width:1280px){.panels{grid-template-columns:minmax(0,1fr) minmax(0,1.55fr) minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.panel>header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.panel>header h2{display:flex;gap:8px;align-items:center}
+.n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px}
+.small{padding:2px 8px;font-size:12px}
+.tl{margin:0}
+.krow{display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.krow .tg{width:22px;height:22px;padding:0;line-height:20px;text-align:center;flex:none}
+.krow .sp{width:22px;flex:none}
+.krow .key{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
+.krow .rules{flex:1 1 100%;margin-left:28px;font-size:12px;color:var(--mute)}
+.kids{margin-left:16px;border-left:1px dashed var(--line);padding-left:6px}
+.kids[hidden]{display:none}
+.journey{display:grid;grid-template-columns:minmax(0,236px) minmax(0,1fr);gap:12px;align-items:start}
+@media (max-width:640px){.journey{grid-template-columns:minmax(0,1fr)}}
+.diagram{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+svg text{font:12px system-ui,sans-serif;fill:var(--ink)}
+.nb{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+.nb.client{stroke:var(--accent)}.nb.database,.nb.cache,.nb.queue,.nb.storage{stroke:var(--warn)}.nb.middleware{stroke:var(--info)}.nb.external-api{stroke:var(--bad)}
+.nb.on{stroke-width:3;stroke:var(--accent);fill:var(--infobg)}
+.nt{fill:var(--mute)!important;font-size:10px!important}
+.sg{fill:none;stroke-width:2;opacity:.35}
+.sg.req{stroke:var(--accent)}.sg.resp{stroke:var(--resp);stroke-dasharray:5 3}
+.sg.done{opacity:.8}.sg.on{opacity:1;stroke-width:3.5}
+.bub{fill:var(--panel);stroke:var(--line)}.bub.on{fill:var(--accent);stroke:var(--accent)}.bt{font-size:10px!important;text-anchor:middle}.bt.on{fill:#fff!important}
+.dot{fill:var(--warn);stroke:var(--panel);stroke-width:2}
+.ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+ol.steps{list-style:none;margin:0;padding:0}
+ol.steps li{display:flex;gap:6px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line)}
+ol.steps li.on{background:var(--infobg)}
+.stepbtn{display:grid;grid-template-columns:22px 1fr;gap:2px 8px;text-align:left;flex:1;border:0;background:transparent;padding:2px 4px;border-radius:6px}
+.stepbtn .num{color:var(--mute);text-align:right}
+.diff{font-size:13px;color:var(--mute)}
+ul.plain{margin:4px 0;padding-left:18px}
+.err{color:var(--bad)}
+.sr{position:absolute;left:-9999px}
+.cmp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:12px 0}
+@media (max-width:760px){.cmp{grid-template-columns:minmax(0,1fr)}}
+.split{margin:8px 0;padding:8px 12px;border-radius:8px;background:var(--warnbg);color:var(--warn);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-size:12px}
+aside#insp{position:fixed;left:0;right:0;bottom:0;max-height:48vh;overflow:auto;background:var(--panel);border-top:2px solid var(--accent);padding:12px 16px;box-shadow:0 -6px 20px rgba(0,0,0,.15);z-index:5}
+aside#insp[hidden]{display:none}
+aside#insp pre{margin:6px 0;padding:8px 10px;background:var(--code);border-radius:6px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1>Endpoint viewer</h1><button type="button" id="theme" class="small" aria-label="Toggle light and dark">Light / dark</button></div>
+  <form id="f" autocomplete="off">
+    <label class="sr" for="q">Endpoint</label>
+    <input type="text" id="q" maxlength="200" placeholder="Enter an endpoint (e.g. POST /api/login)" spellcheck="false">
+    <button class="primary" id="go" type="submit">Analyze</button>
+    <button type="button" id="re" disabled title="Analyze again even if the code has not changed">Re-analyze</button>
+  </form>
+  <p class="hint">Nothing is pre-traced. Each endpoint is analyzed on demand, then verified by a separate read-only run before it is shown. Keys and types only, never values.</p>
+  <div id="status" role="status" aria-live="polite"></div>
+  <ul class="hist" id="hist" aria-label="Endpoints analyzed this session"></ul>
+  <div id="out"></div>
+</main>
+<aside id="insp" role="dialog" aria-label="Evidence" hidden></aside>
+<script nonce="{{NONCE}}">
+(function () {
+  'use strict';
+  var hash = location.hash;
+  function param(n) { var m = new RegExp('(?:^|[#&])' + n + '=([^&]*)').exec(hash); return m ? decodeURIComponent(m[1]) : ''; }
+  var TOKEN = param('token');
+  var PRESET = param('q').split('|').map(function (x) { return x.slice(0, 200); }).filter(Boolean).slice(0, 3);   // optional deep links: #token=..&q=POST%20/login|GET%20/x
+  var VIEW = { s: param('s'), step: param('step'), cmp: param('cmp'), insp: param('insp'), play: param('play') };
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+
+  function h(tag, attrs) {                       // DOM builder: text always goes in as text, never as HTML
+    var el = document.createElement(tag);
+    if (attrs) for (var k in attrs) { if (k === 'class') el.className = attrs[k]; else if (k === 'text') el.textContent = attrs[k]; else if (attrs[k] !== false && attrs[k] != null) el.setAttribute(k, attrs[k]); }
+    var add = function (c) { if (c == null || c === false) return; if (Array.isArray(c)) { c.forEach(add); return; } el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); };
+    for (var i = 2; i < arguments.length; i++) add(arguments[i]);
+    return el;
+  }
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function sv(tag, attrs, text) { var el = document.createElementNS(SVGNS, tag); for (var k in attrs || {}) el.setAttribute(k, attrs[k]); if (text != null) el.textContent = text; return el; }
+  var $ = function (id) { return document.getElementById(id); };
+  var input = $('q'), go = $('go'), re = $('re'), statusEl = $('status'), out = $('out'), insp = $('insp'), histEl = $('hist');
+  var run = 0, lastEndpoint = '', current = null, sel = 0, cmp = null, hist = [], A = null;
+  var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(path, { method: opts.method || 'GET', headers: { 'X-Session-Token': TOKEN, 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+
+  // ---------------------------------------------------------------- start / poll / progress
+  function start(endpoint, refresh, pick, then) {
+    var my = ++run;
+    lastEndpoint = endpoint; out.textContent = ''; current = null; cmp = null; stopAnim(); closeInsp();
+    go.disabled = true; re.disabled = true;
+    showStatus({ stage: 'queued' });
+    api('/api/analyze', { method: 'POST', body: { endpoint: endpoint, refresh: !!refresh, pick: pick || undefined } })
+      .then(function (r) { poll(r.job, my, then); })
+      .catch(function (e) { fail(e.message); });
+  }
+  function poll(job, my, then) {
+    if (my !== run) return;
+    if (job.stage === 'done') return finished(job, then);
+    showStatus(job);
+    setTimeout(function () { api('/api/jobs/' + job.id).then(function (j) { poll(j, my, then); }).catch(function (e) { fail(e.message); }); }, 1500);
+  }
+  function fail(msg) {
+    statusEl.textContent = '';
+    statusEl.appendChild(h('p', { class: 'err', text: msg }));
+    go.disabled = false; re.disabled = !lastEndpoint;
+  }
+  function showStatus(job) {
+    var order = ['locating', 'analyzing', 'verifying', 'retrying'], names = ['Locating', 'Analyzing', 'Verifying', 'Re-analyzing (only if needed)'];
+    var idx = order.indexOf(job.stage), ul = h('ol', { class: 'stages', 'data-stage': job.stage });
+    order.forEach(function (st, i) {
+      if (i) ul.appendChild(h('li', { class: 'arrow', 'aria-hidden': 'true', text: '→' }));
+      ul.appendChild(h('li', { class: (i === idx ? 'on' : (idx > i && i < 3 ? 'past' : '')) + (i === 3 ? ' opt' : ''), text: names[i] + (i === idx && job.attempt > 1 ? ' (attempt ' + job.attempt + ')' : '') }));
+    });
+    statusEl.textContent = '';
+    statusEl.appendChild(ul);
+    var note = job.stage === 'queued' ? (job.queuePosition ? 'Waiting in the queue: position ' + job.queuePosition + '.' : 'Queued.') :
+      job.stage === 'retrying' ? 'The verifier found major problems; analyzing once more with the list of problems.' :
+      job.stage === 'verifying' ? 'A separate read-only run is re-reading the code and does not trust the first analysis.' : 'This can take several minutes.';
+    statusEl.appendChild(h('p', { class: 'hint', text: note }));
+  }
+  function finished(job, then) {
+    statusEl.textContent = '';
+    go.disabled = false; re.disabled = false;
+    var r = job.result || {};
+    if (job.status === 'not_located') return notLocated(r.locate || {});
+    if (job.status === 'error') return out.appendChild(h('p', { class: 'err', text: r.message || 'The analysis failed.' }));
+    show(job, true);
+    remember(job);
+    if (then) then();
+  }
+  function show(job, applyView) {
+    current = { job: job, a: job.result.analysis, r: job.result }; sel = 0; cmp = null; stopAnim(); closeInsp();
+    if (applyView) applyViewParams();
+    render();
+  }
+
+  function notLocated(l) {
+    var card = h('div', { class: 'card', id: 'notfound' });
+    if (l.status === 'invalid') card.appendChild(h('p', { class: 'err', text: 'That is not an endpoint: ' + (l.reason || 'invalid input') }));
+    else if (l.status === 'several') {
+      card.appendChild(h('p', { text: (l.matches || []).length + ' routes match. Pick the one you mean:' }));
+      (l.matches || []).forEach(function (mm) {
+        var b = h('button', { type: 'button' }, h('span', { class: 'method', text: mm.method }), ' ' + mm.path + '  ', h('span', { class: 'mono hint', text: mm.file + ':' + mm.line }));
+        b.addEventListener('click', function () { start(lastEndpoint, false, { file: mm.file, line: mm.line }); });
+        card.appendChild(h('div', null, b));
+      });
+    } else {
+      card.appendChild(h('p', { text: 'Not found.' + (l.fallback === 'claude' ? ' The route scanner could not read every route in this project, so the route may exist in a form it cannot see.' : '') }));
+      if ((l.closest || []).length) {
+        card.appendChild(h('h3', { text: 'Closest matches' }));
+        l.closest.forEach(function (c) {
+          var b = h('button', { type: 'button' }, h('span', { class: 'method', text: c.method }), ' ' + (c.path || c.handler));
+          b.addEventListener('click', function () { input.value = c.method + ' ' + c.path; start(input.value, false); });
+          card.appendChild(h('div', null, b));
+        });
+      }
+    }
+    out.appendChild(card);
+  }
+
+  // ---------------------------------------------------------------- history (this page session)
+  function remember(job) {
+    var a = job.result.analysis || {}, sm = (a.verification || {}).summary || {}, ep = a.endpoint || {};
+    var entry = { key: job.endpoint, label: (ep.method || '') + ' ' + (ep.path || job.endpoint), sum: sm, job: job };
+    hist = hist.filter(function (x) { return x.key !== entry.key; });
+    hist.unshift(entry);
+    hist = hist.slice(0, 20);
+    drawHistory();
+  }
+  function drawHistory() {
+    histEl.textContent = '';
+    hist.forEach(function (e) {
+      var b = h('button', { type: 'button', 'aria-current': current && current.job === e.job ? 'true' : 'false', title: 'Show this analysis again' },
+        h('span', { class: 'mono', text: e.label }), h('span', { class: 'chip ok', text: '✓ ' + (e.sum.verified || 0) }),
+        (e.sum.corrected ? h('span', { class: 'chip warn', text: '✎ ' + e.sum.corrected }) : null), (e.sum.unverified ? h('span', { class: 'chip bad', text: '? ' + e.sum.unverified }) : null));
+      b.addEventListener('click', function () { out.textContent = ''; show(e.job, false); lastEndpoint = e.key; input.value = e.key; re.disabled = false; });
+      histEl.appendChild(h('li', null, b));
+    });
+  }
+
+  // ---------------------------------------------------------------- badges and the evidence inspector
+  function vmap(a) { var o = {}; ((a.verification || {}).items || []).forEach(function (i) { o[i.target] = i; }); return o; }
+  var ICON = { verified: '✓', corrected: '✎', unverified: '?' }, CLS = { verified: 'ok', corrected: 'warn', unverified: 'bad' };
+  function badge(item, label, ev, inherited) {
+    var st = item ? item.status : 'unverified';
+    var b = h('button', { type: 'button', class: 'badge ' + CLS[st] + (inherited ? ' inh' : ''), text: ICON[st], 'data-status': st,
+      'aria-label': st + (item ? '' : ' (not checked)') + (inherited ? ', as part of its whole item' : '') + ': show the evidence for ' + label, title: st + (item ? ': ' + (item.reason || '') : ' (not checked)') });
+    b.addEventListener('click', function (e) { e.stopPropagation(); inspect(label, item, ev, inherited); });
+    return b;
+  }
+  function inspect(label, item, ev, inherited) {
+    var st = item ? item.status : 'unverified';
+    insp.textContent = '';
+    var close = h('button', { type: 'button', class: 'small', text: 'Close' });
+    close.addEventListener('click', closeInsp);
+    insp.appendChild(h('div', { class: 'row' }, h('strong', { id: 'insptitle', text: label }), h('span', { class: 'chip ' + (st === 'verified' ? 'ok' : st === 'corrected' ? 'warn' : 'bad'), text: ICON[st] + ' ' + st }), close));
+    if (inherited) insp.appendChild(h('p', { class: 'hint', text: 'This key is covered by the verification of the whole item it belongs to.' }));
+    insp.appendChild(h('p', { text: item ? (item.reason || '') : 'The verifier did not check this item.' }));
+    if (item && item.status === 'corrected') insp.appendChild(h('p', { class: 'diff', text: 'Was: ' + item.was + '  →  now: ' + item.now }));
+    if (ev && ev.file) {
+      insp.appendChild(h('div', { class: 'mono', id: 'inspfile', text: ev.file + ':' + ev.line + (ev.symbol ? '  (' + ev.symbol + ')' : '') }));
+      insp.appendChild(ev.snippet ? h('pre', { id: 'inspsnip', text: ev.snippet }) : h('p', { class: 'hint', text: 'No snippet was cited.' }));
+    } else insp.appendChild(h('p', { class: 'hint', text: 'No evidence was cited for this item.' }));
+    insp.hidden = false;
+    close.focus();
+  }
+  function closeInsp() { insp.hidden = true; insp.textContent = ''; }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !insp.hidden) closeInsp(); });
+
+  function statusClass(n) { return n >= 500 ? 's5' : n >= 400 ? 's4' : n >= 300 ? 's3' : n >= 200 ? 's2' : ''; }
+  function chipClass(n) { return n >= 500 ? 'bad' : n >= 400 ? 'warn' : n >= 300 ? 'info' : n >= 200 ? 'ok' : ''; }
+
+  // ---------------------------------------------------------------- collapsible key trees
+  function treeLevel(fields, depth, ctx, parent) {
+    var wrap = h('div', { class: 'tl' });
+    (fields || []).forEach(function (f, i) {
+      var own = depth === 0 ? ctx.top(i, f) : null;
+      var item = own ? own.item : (parent && parent.item), inh = own ? !!own.inherited : true;
+      var ev = f.evidence || (parent && parent.ev) || ctx.ev;
+      var kids = f.children && f.children.length ? treeLevel(f.children, depth + 1, ctx, { item: item, ev: ev }) : null;
+      var tg = kids ? h('button', { type: 'button', class: 'tg small', 'aria-expanded': 'true', 'aria-label': 'Collapse ' + f.key, text: '▾' }) : h('span', { class: 'sp' });
+      var rules = (f.validation || []).length ? h('div', { class: 'rules', text: f.validation.join(' · ') }) : null;
+      var kidBox = kids ? h('div', { class: 'kids' }, kids) : null;
+      if (kids) tg.addEventListener('click', function () { var open = tg.getAttribute('aria-expanded') !== 'true'; tg.setAttribute('aria-expanded', open ? 'true' : 'false'); tg.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + f.key); tg.textContent = open ? '▾' : '▸'; kidBox.hidden = !open; });
+      wrap.appendChild(h('div', null,
+        h('div', { class: 'krow' }, tg, h('span', { class: 'key', text: f.key }), h('span', { class: 'chip', text: f.type }), h('span', { class: 'chip ' + (f.required ? 'info' : ''), text: f.required ? 'required' : 'optional' }), badge(item, ctx.label + ' key "' + f.key + '"', ev, inh), rules),
+        kidBox));
+    });
+    return wrap;
+  }
+  function keyTree(fields, ctx) {
+    if (!fields || !fields.length) return h('p', { class: 'hint', text: 'None.' });
+    return h('div', { class: 'tree' }, treeLevel(fields, 0, ctx, null));
+  }
+  function foldAll(root, open) {
+    Array.prototype.forEach.call(root.querySelectorAll('.tg'), function (b) { if ((b.getAttribute('aria-expanded') === 'true') !== open) b.click(); });
+  }
+  function treeButtons(getRoot) {
+    var a = h('button', { type: 'button', class: 'small', text: 'Expand all' }), c = h('button', { type: 'button', class: 'small', text: 'Collapse all' });
+    a.addEventListener('click', function () { foldAll(getRoot(), true); }); c.addEventListener('click', function () { foldAll(getRoot(), false); });
+    return h('div', { class: 'row' }, a, c);
+  }
+  function plist(list, vm, base, label) {
+    if (!list || !list.length) return h('p', { class: 'hint', text: 'None.' });
+    return h('table', null, h('tbody', null, list.map(function (p, i) {
+      var item = base ? vm[base + '[' + i + ']'] : null;
+      return h('tr', null, h('td', { class: 'mono', text: p.name }), h('td', { text: [p.type, p.note, (p.validation || []).join('; ')].filter(Boolean).join(' · ') }), h('td', { text: p.required === undefined ? '' : (p.required ? 'required' : 'optional') }),
+        h('td', null, base ? badge(item, label + ' "' + p.name + '"', p.evidence, false) : null));
+    })));
+  }
+
+  // ---------------------------------------------------------------- journey: diagram + steps
+  var NW = 144, NH = 38, GAP = 72, LX = 26, RX = 214, CX = 120, TOP = 16;
+  function journeyModel(steps) {
+    var nodes = [], idx = {};
+    steps.forEach(function (st, i) { var k = st.node.name + '|' + st.node.type; if (!(k in idx)) { idx[k] = nodes.length; nodes.push({ name: st.node.name, type: st.node.type, first: i }); } });
+    return { nodes: nodes, at: steps.map(function (st) { return idx[st.node.name + '|' + st.node.type]; }) };
+  }
+  function cy(i) { return TOP + i * GAP + NH / 2; }
+  function segPath(a, b) {
+    if (a === b) return null;
+    var y1 = cy(a), y2 = cy(b);
+    return a < b ? 'M' + (CX - NW / 2) + ',' + y1 + ' H' + LX + ' V' + y2 + ' H' + (CX - NW / 2 - 3) : 'M' + (CX + NW / 2) + ',' + y1 + ' H' + RX + ' V' + y2 + ' H' + (CX + NW / 2 + 3);
+  }
+  function stopAnim() { if (A) { A.playing = false; clearTimeout(A.timer); } A = null; }
+
+  function journeyPanel(sc, vm, base) {
+    var steps = sc.steps || [], M = journeyModel(steps), n = M.nodes.length;
+    var W = 240, Hh = TOP * 2 + (n - 1) * GAP + NH;
+    var svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + Hh, width: W, height: Hh, role: 'img', 'aria-label': 'Journey of the request and response between ' + n + ' components', 'data-step': '-1', 'data-playing': 'false', 'data-nodes': n, 'data-steps': steps.length, id: 'jsvg' });
+    var defs = sv('defs');
+    ['req', 'resp'].forEach(function (k) { var mk = sv('marker', { id: 'ar-' + k, viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 6, markerHeight: 6, orient: 'auto' }); mk.appendChild(sv('path', { d: 'M0,0 L8,4 L0,8 z', fill: k === 'req' ? 'var(--accent)' : 'var(--resp)' })); defs.appendChild(mk); });
+    svg.appendChild(defs);
+    var segEls = [], bubEls = [], nodeEls = [];
+    steps.forEach(function (st, i) {
+      if (i === 0) { segEls.push(null); return; }
+      var d = segPath(M.at[i - 1], M.at[i]);
+      var kind = st.direction === 'request' ? 'req' : 'resp';
+      var p = d ? sv('path', { d: d, class: 'sg ' + kind, 'marker-end': 'url(#ar-' + kind + ')', 'data-seg': i }) : null;
+      if (p) svg.appendChild(p);
+      segEls.push(p);
+    });
+    M.nodes.forEach(function (nd, i) {
+      var g = sv('g', { class: 'nd', tabindex: 0, role: 'button', 'aria-label': nd.name + ' (' + nd.type + '): go to its first step', 'data-node': i });
+      g.appendChild(sv('rect', { x: CX - NW / 2, y: TOP + i * GAP, width: NW, height: NH, rx: 8, class: 'nb ' + nd.type }));
+      g.appendChild(sv('text', { x: CX, y: TOP + i * GAP + 16, 'text-anchor': 'middle' }, nd.name.length > 22 ? nd.name.slice(0, 21) + '…' : nd.name));
+      g.appendChild(sv('text', { x: CX, y: TOP + i * GAP + 30, 'text-anchor': 'middle', class: 'nt' }, nd.type));
+      g.addEventListener('click', function () { pause(); goStep(nd.first); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pause(); goStep(nd.first); } });
+      svg.appendChild(g); nodeEls.push(g);
+    });
+    steps.forEach(function (st, i) {                // numbered bubbles at the middle of each movement (or beside the node for a step in place)
+      var a = i ? M.at[i - 1] : M.at[0], b = M.at[i], down = a < b, same = a === b;
+      var x = same ? RX : (down ? LX : RX), y = same ? cy(b) : (cy(a) + cy(b)) / 2;
+      var gq = sv('g', { class: 'bubble', 'data-bub': i });
+      gq.appendChild(sv('circle', { cx: x, cy: y, r: 9, class: 'bub' })); gq.appendChild(sv('text', { x: x, y: y + 3.5, class: 'bt' }, String(i + 1)));
+      svg.appendChild(gq); bubEls.push(gq);
+    });
+    var dot = sv('circle', { r: 6, class: 'dot', cx: CX - NW / 2 - 12, cy: cy(M.at[0]), id: 'jdot' });
+    svg.appendChild(dot);
+    var diagram = h('div', { class: 'diagram', id: 'diagram' }, svg);
+
+    var list = h('ol', { class: 'steps', id: 'steplist' }), liEls = [];
+    steps.forEach(function (st, i) {
+      var item = vm[base + '.steps[' + i + ']'];
+      var btn = h('button', { type: 'button', class: 'stepbtn', 'aria-label': 'Step ' + (i + 1) + ': ' + st.action }, h('span', { class: 'num', text: String(i + 1) }),
+        h('span', null, h('span', { class: 'chip ' + (st.direction === 'request' ? 'info' : 'ok'), text: st.direction === 'request' ? '→ request' : '← response' }), ' ', h('strong', { text: st.node.name }), ' ', h('span', { class: 'chip', text: st.node.type }),
+          h('div', { text: st.action }), st.data ? h('div', { class: 'hint', text: 'Data: ' + st.data }) : null));
+      btn.addEventListener('click', function () { pause(); goStep(i); });
+      var li = h('li', { 'data-i': i }, btn, badge(item, 'step ' + (i + 1) + ' (' + st.node.name + ')', st.evidence, false));
+      list.appendChild(li); liEls.push(li);
+    });
+
+    A = { svg: svg, dot: dot, segEls: segEls, bubEls: bubEls, nodeEls: nodeEls, liEls: liEls, steps: steps, M: M, step: -1, playing: false, timer: null, label: null, playBtn: null };
+    var label = h('span', { class: 'hint', id: 'steplabel', text: 'Step – / ' + steps.length });
+    var play = h('button', { type: 'button', class: 'small', id: 'play', text: '▶ Play' }), prev = h('button', { type: 'button', class: 'small', id: 'prev', text: '◀ Prev' }), next = h('button', { type: 'button', class: 'small', id: 'next', text: 'Next ▶' }), rst = h('button', { type: 'button', class: 'small', text: '⏮ Restart' });
+    A.label = label; A.playBtn = play;
+    play.addEventListener('click', function () { A.playing ? pause() : playAnim(); });
+    prev.addEventListener('click', function () { pause(); goStep(Math.max(0, A.step - 1)); });
+    next.addEventListener('click', function () { pause(); goStep(Math.min(steps.length - 1, A.step + 1)); });
+    rst.addEventListener('click', function () { pause(); goStep(0); });
+    return h('div', null, h('div', { class: 'ctl' }, rst, prev, play, next, label), h('div', { class: 'journey' }, diagram, list));
+  }
+  function setStep(i) {
+    if (!A) return;
+    A.step = i;
+    A.svg.setAttribute('data-step', String(i));
+    A.segEls.forEach(function (p, k) { if (p) p.setAttribute('class', p.getAttribute('class').replace(/ (on|done)/g, '') + (k === i ? ' on' : (k < i ? ' done' : ''))); });
+    A.bubEls.forEach(function (g, k) { g.firstChild.setAttribute('class', 'bub' + (k === i ? ' on' : '')); g.lastChild.setAttribute('class', 'bt' + (k === i ? ' on' : '')); });
+    A.nodeEls.forEach(function (g, k) { g.firstChild.setAttribute('class', g.firstChild.getAttribute('class').replace(' on', '') + (k === A.M.at[i] ? ' on' : '')); });
+    A.liEls.forEach(function (li, k) { li.className = k === i ? 'on' : ''; });
+    A.label.textContent = 'Step ' + (i + 1) + ' / ' + A.steps.length;
+    var seg = A.segEls[i];
+    if (seg) { var pt = seg.getPointAtLength(seg.getTotalLength()); A.dot.setAttribute('cx', pt.x); A.dot.setAttribute('cy', pt.y); }
+    else { A.dot.setAttribute('cx', CX - NW / 2 - 12); A.dot.setAttribute('cy', cy(A.M.at[i])); }
+    var node = A.nodeEls[A.M.at[i]], box = $('diagram');
+    if (box) { var nr = node.getBoundingClientRect(), br = box.getBoundingClientRect(); if (nr.height && (nr.top < br.top || nr.bottom > br.bottom)) box.scrollTop += nr.top - br.top - 60; }
+  }
+  function goStep(i) { if (A) setStep(i); }
+  function pause() { if (!A) return; A.playing = false; clearTimeout(A.timer); A.svg.setAttribute('data-playing', 'false'); A.playBtn.textContent = '▶ Play'; }
+  function playAnim() {
+    if (!A) return;
+    var last = A.steps.length - 1;
+    if (A.step < 0 || A.step >= last) setStep(0);
+    A.playing = true; A.svg.setAttribute('data-playing', 'true'); A.playBtn.textContent = '⏸ Pause';
+    var advance = function (i) {
+      if (!A || !A.playing) return;
+      if (i > last) { pause(); return; }
+      var seg = A.segEls[i];
+      var done = function () { if (!A || !A.playing) return; setStep(i); A.timer = setTimeout(function () { advance(i + 1); }, REDUCED ? 700 : 350); };
+      if (!seg || REDUCED) { A.timer = setTimeout(done, REDUCED ? 0 : 200); return; }
+      var L = seg.getTotalLength(), t0 = performance.now(), D = 650;
+      (function tick() {
+        if (!A || !A.playing) return;
+        var f = Math.min(1, (performance.now() - t0) / D), pt = seg.getPointAtLength(L * f);
+        A.dot.setAttribute('cx', pt.x); A.dot.setAttribute('cy', pt.y);
+        if (f >= 1) done(); else A.timer = setTimeout(tick, 30);
+      })();
+    };
+    advance(A.step + 1);
+  }
+
+  // ---------------------------------------------------------------- scenario panels
+  function panel(num, title, extra, body) { return h('section', { class: 'panel', 'data-panel': num, 'aria-label': title }, h('header', null, h('h2', null, h('span', { class: 'n', text: String(num) }), title), extra), body); }
+
+  function scenarioView(a, vm, sc, si) {
+    var base = 'scenarios[' + si + ']', req = sc.request || {}, resp = sc.response || {};
+    var reqRoot = h('div');
+    reqRoot.appendChild(h('h3', { text: 'Headers (names only)' })); reqRoot.appendChild(plist(req.headers, vm, null, 'header'));
+    if ((req.pathParams || []).length) { reqRoot.appendChild(h('h3', { text: 'Path parameters' })); reqRoot.appendChild(plist(req.pathParams, vm, base + '.request.pathParams', 'path parameter')); }
+    if ((req.queryParams || []).length) { reqRoot.appendChild(h('h3', { text: 'Query parameters' })); reqRoot.appendChild(plist(req.queryParams, vm, base + '.request.queryParams', 'query parameter')); }
+    reqRoot.appendChild(h('h3', { text: 'Body' + (req.body ? ' (' + req.body.contentType + ')' : '') }));
+    var reqTree = req.body ? keyTree(req.body.fields, { label: 'request', top: function (i) { return { item: vm[base + '.request.body.fields[' + i + ']'], inherited: false }; }, ev: null }) : h('p', { class: 'hint', text: 'No body.' });
+    reqRoot.appendChild(reqTree);
+    var p1 = panel(1, 'Request', req.body ? treeButtons(function () { return reqTree; }) : null, reqRoot);
+
+    var rItem = vm[base + '.response'];
+    var respTree = resp.body ? keyTree(resp.body.fields, { label: 'response', top: function () { return { item: rItem, inherited: true }; }, ev: resp.evidence }) : h('p', { class: 'hint', text: 'No body.' });
+    var respBox = h('div', null,
+      h('div', { class: 'row' }, h('span', { class: 'chip ' + chipClass(resp.status), text: 'HTTP ' + resp.status }), resp.contentType ? h('span', { class: 'chip', text: resp.contentType }) : null, h('span', { class: 'chip', text: 'shape from: ' + resp.shapeSource }), badge(rItem, 'the response (' + resp.status + ')', resp.evidence, false)),
+      (resp.headers || []).length ? h('div', null, h('h3', { text: 'Response headers (names only)' }), plist(resp.headers, vm, null, 'response header')) : null,
+      h('h3', { text: 'Body (keys and types)' }), respTree);
+    var p3 = panel(3, 'Response', resp.body ? treeButtons(function () { return respTree; }) : null, respBox);
+    var p2 = panel(2, 'Journey', null, journeyPanel(sc, vm, base));
+    return h('div', { class: 'panels' }, p1, p2, p3);
+  }
+
+  // ---------------------------------------------------------------- compare two scenarios
+  function skey(st) { return st.node.name + '|' + st.node.type + '|' + st.direction; }
+  function flat(fields, prefix, o) {
+    (fields || []).forEach(function (f) { var p = prefix ? prefix + '.' + f.key : f.key; o[p] = f.type + ' · ' + (f.required ? 'required' : 'optional') + ((f.validation || []).length ? ' · ' + f.validation.join('; ') : ''); if (f.children) flat(f.children, p, o); });
+    return o;
+  }
+  function diffTable(oa, ob, na, nb) {
+    var keys = Object.keys(oa).concat(Object.keys(ob).filter(function (k) { return !(k in oa); })), rows = [];
+    keys.forEach(function (k) { if (oa[k] !== ob[k]) rows.push(h('tr', null, h('td', { class: 'mono', text: k }), h('td', { text: oa[k] || '— (absent)' }), h('td', { text: ob[k] || '— (absent)' }))); });
+    return rows.length ? h('table', { 'data-diff': rows.length }, h('thead', null, h('tr', null, h('th', { text: 'Key' }), h('th', { text: na }), h('th', { text: nb }))), h('tbody', null, rows)) : h('p', { class: 'hint', text: 'No differences.' });
+  }
+  function stepLi(st, i, vm, base) {
+    return h('li', null, h('span', { class: 'num hint', text: String(i + 1) + '.' }),
+      h('div', { class: 'stepbtn' }, h('span', null), h('span', null, h('span', { class: 'chip ' + (st.direction === 'request' ? 'info' : 'ok'), text: st.direction === 'request' ? '→' : '←' }), ' ', h('strong', { text: st.node.name }), h('div', { text: st.action }))),
+      badge(vm[base + '.steps[' + i + ']'], 'step ' + (i + 1) + ' (' + st.node.name + ')', st.evidence, false));
+  }
+  function compareView(a, vm) {
+    var A_ = a.scenarios[cmp.a], B_ = a.scenarios[cmp.b], sa = A_.steps, sb = B_.steps, k = 0;
+    while (k < sa.length && k < sb.length && skey(sa[k]) === skey(sb[k])) k++;
+    var wrap = h('div', { id: 'cmpview' }), msg;
+    if (cmp.a === cmp.b) msg = 'Pick two different scenarios.';
+    else if (k === sa.length && k === sb.length) msg = 'Both scenarios take exactly the same path. They differ only in what the code returns or in the request.';
+    else msg = 'The first ' + k + ' step' + (k === 1 ? ' is' : 's are') + ' the same. They split at step ' + (k + 1) + ': ' +
+      (sa[k] ? '“' + A_.name + '” goes to ' + sa[k].node.name + ' (' + sa[k].action + ')' : '“' + A_.name + '” has already ended') + ', while ' +
+      (sb[k] ? '“' + B_.name + '” goes to ' + sb[k].node.name + ' (' + sb[k].action + ')' : '“' + B_.name + '” has already ended') + '.';
+    wrap.appendChild(h('div', { class: 'split', id: 'splitmsg', 'data-shared': String(k), text: msg }));
+    if (cmp.a !== cmp.b) {
+      var bA = 'scenarios[' + cmp.a + ']', bB = 'scenarios[' + cmp.b + ']';
+      if (k) wrap.appendChild(h('details', { id: 'shared' }, h('summary', { text: k + ' shared step' + (k === 1 ? '' : 's') }), h('ol', { class: 'steps' }, sa.slice(0, k).map(function (st, i) { return stepLi(st, i, vm, bA); }))));
+      wrap.appendChild(h('div', { class: 'cmp' },
+        h('section', { class: 'panel ' + statusClass(A_.response.status) }, h('header', null, h('h2', { text: A_.name }), h('span', { class: 'chip ' + chipClass(A_.response.status), text: 'HTTP ' + A_.response.status })), h('ol', { class: 'steps', 'data-side': 'a' }, sa.slice(k).map(function (st, i) { return stepLi(st, k + i, vm, bA); }))),
+        h('section', { class: 'panel ' + statusClass(B_.response.status) }, h('header', null, h('h2', { text: B_.name }), h('span', { class: 'chip ' + chipClass(B_.response.status), text: 'HTTP ' + B_.response.status })), h('ol', { class: 'steps', 'data-side': 'b' }, sb.slice(k).map(function (st, i) { return stepLi(st, k + i, vm, bB); })))));
+      wrap.appendChild(h('div', { class: 'panel', id: 'reqdiff' }, h('h3', { text: 'Request differences' }), diffTable(flat((A_.request.body || {}).fields, '', {}), flat((B_.request.body || {}).fields, '', {}), A_.name, B_.name)));
+      var ra = flat((A_.response.body || {}).fields, '', {}), rb = flat((B_.response.body || {}).fields, '', {});
+      ra['(HTTP status)'] = String(A_.response.status); rb['(HTTP status)'] = String(B_.response.status);
+      ra['(shape from)'] = A_.response.shapeSource; rb['(shape from)'] = B_.response.shapeSource;
+      wrap.appendChild(h('div', { class: 'panel', id: 'respdiff' }, h('h3', { text: 'Response differences' }), diffTable(ra, rb, A_.name, B_.name)));
+    }
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------- page
+  function render() {
+    var a = current.a, r = current.r, vm = vmap(a), ep = a.endpoint || {}, v = a.verification || {}, sum = v.summary || {};
+    stopAnim(); out.textContent = '';
+    drawHistory();
+    out.appendChild(h('div', { class: 'card', id: 'summary' },
+      h('div', { class: 'row' }, h('span', { class: 'method', text: ep.method }), h('strong', { class: 'mono', text: ep.path }), h('span', { class: 'chip', text: ep.service }), badge(vm['endpoint.handler'], 'the handler', ep.handler, false),
+        current.job.cached ? h('span', { class: 'chip', text: 'from cache: code unchanged', title: 'Use Re-analyze to run it again' }) : null),
+      h('p', { text: ep.summary || '' }),
+      ep.handler ? h('p', { class: 'mono hint', text: 'Handler ' + ep.handler.symbol + ' at ' + ep.handler.file + ':' + ep.handler.line }) : null,
+      h('div', { class: 'row' }, h('span', { class: 'chip ok', text: (sum.verified || 0) + ' verified' }), h('span', { class: 'chip warn', text: (sum.corrected || 0) + ' corrected' }), h('span', { class: 'chip bad', text: (sum.unverified || 0) + ' unverified' }),
+        h('span', { class: 'chip', text: r.rerun ? 'analyzed twice (major problems the first time)' : 'analyzed once' }),
+        r.status === 'done_with_problems' ? h('span', { class: 'chip bad', text: 'major problems remain: see the notes below' }) : null),
+      h('div', { class: 'legend' }, h('span', null, h('span', { class: 'badge ok', text: '✓' }), ' verified by a separate run that read the code'), h('span', null, h('span', { class: 'badge warn', text: '✎' }), ' corrected by the verifier'), h('span', null, h('span', { class: 'badge bad', text: '?' }), ' unverified: could not be confirmed'), h('span', { text: 'Click any badge for the file, line, and code.' }))));
+
+    var tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Scenarios' });
+    (a.scenarios || []).forEach(function (sc, i) {
+      var b = h('button', { type: 'button', role: 'tab', class: statusClass(sc.response && sc.response.status), 'data-i': i, 'aria-selected': (!cmp && i === sel) ? 'true' : 'false' }, sc.name + ' ', h('span', { class: 'chip ' + chipClass(sc.response && sc.response.status), text: String(sc.response && sc.response.status) }));
+      b.addEventListener('click', function () { cmp = null; sel = i; render(); });
+      tabs.appendChild(b);
+    });
+    var cbtn = h('button', { type: 'button', id: 'cmpbtn', 'aria-pressed': cmp ? 'true' : 'false', text: 'Compare scenarios' });
+    cbtn.addEventListener('click', function () { cmp = cmp ? null : { a: sel, b: (sel + 1) % a.scenarios.length }; render(); });
+    out.appendChild(h('div', { class: 'row' }, tabs, cbtn));
+
+    if (cmp) {
+      var selA = h('select', { id: 'cmpa', 'aria-label': 'First scenario' }), selB = h('select', { id: 'cmpb', 'aria-label': 'Second scenario' });
+      a.scenarios.forEach(function (sc, i) { selA.appendChild(h('option', { value: i, selected: i === cmp.a ? 'selected' : false, text: sc.name })); selB.appendChild(h('option', { value: i, selected: i === cmp.b ? 'selected' : false, text: sc.name })); });
+      selA.addEventListener('change', function () { cmp.a = +selA.value; render(); }); selB.addEventListener('change', function () { cmp.b = +selB.value; render(); });
+      out.appendChild(h('div', { class: 'row card' }, h('span', { text: 'Compare' }), selA, h('span', { text: 'with' }), selB));
+      out.appendChild(compareView(a, vm));
+    } else {
+      var sc = (a.scenarios || [])[sel];
+      if (sc) {
+        out.appendChild(h('div', { class: 'card ' + statusClass(sc.response.status), id: 'scenariohead' }, h('div', { class: 'row' }, h('strong', { text: sc.name }), h('span', { class: 'chip', text: sc.outcome })), h('p', { class: 'hint', text: 'When: ' + sc.trigger })));
+        out.appendChild(scenarioView(a, vm, sc, sel));
+        if (A) setStep(0);
+      }
+    }
+    var attention = (v.items || []).filter(function (i) { return i.status !== 'verified'; }), lim = (a.meta && a.meta.limitations) || [];
+    if (attention.length || lim.length) {
+      var note = h('div', { class: 'card', id: 'attention' }, h('h2', { text: 'Needs attention' }));
+      attention.forEach(function (i) { note.appendChild(h('div', null, h('span', { class: 'chip ' + CLS[i.status], text: ICON[i.status] + ' ' + i.status }), ' ', h('span', { class: 'mono', text: i.target }), h('div', { class: 'diff', text: i.reason }), i.status === 'corrected' ? h('div', { class: 'diff', text: 'was: ' + i.was + ' → now: ' + i.now }) : null)); });
+      if (lim.length) { note.appendChild(h('h3', { text: 'Limitations' })); note.appendChild(h('ul', { class: 'plain' }, lim.map(function (x) { return h('li', { text: x }); }))); }
+      out.appendChild(note);
+    }
+  }
+
+  function applyViewParams() {      // deep-link view state: #s=<scenario>&step=<n>&cmp=<a>,<b>&insp=first|verified|corrected|unverified&play=1
+    var a = current.a, n = (a.scenarios || []).length, want = VIEW;
+    VIEW = { s: '', step: '', cmp: '', insp: '', play: '' };
+    if (want.s !== '' && +want.s >= 0 && +want.s < n) sel = +want.s;
+    if (want.cmp) { var p = want.cmp.split(',').map(Number); if (p.length === 2 && p[0] >= 0 && p[1] >= 0 && p[0] < n && p[1] < n) cmp = { a: p[0], b: p[1] }; }
+    setTimeout(function () {
+      if (want.step !== '' && A && +want.step >= 0 && +want.step < A.steps.length) setStep(+want.step);
+      if (want.insp) { var sel_ = want.insp === 'first' ? '.badge[data-status]' : want.insp === 'step' ? 'ol.steps li .badge[data-status]' : '.badge[data-status="' + want.insp.replace(/[^a-z]/g, '') + '"]'; var el = document.querySelector(sel_); if (el) el.click(); }
+      if (want.play === '1' && A) playAnim();
+    }, 0);
+  }
+
+  $('f').addEventListener('submit', function (e) { e.preventDefault(); var t = input.value.trim(); if (t) start(t, false); });
+  re.addEventListener('click', function () { if (lastEndpoint) start(lastEndpoint, true); });
+  $('theme').addEventListener('click', function () { var r = document.documentElement, dark = r.getAttribute('data-theme') === 'dark' || (!r.getAttribute('data-theme') && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); r.setAttribute('data-theme', dark ? 'light' : 'dark'); });
+  var emb = $('embedded');
+  if (emb) {                        // a standalone copy made by render_endpoint.py: the analysis is in the page, there is no server
+    var data = null;
+    try { data = JSON.parse(emb.textContent); } catch (e) {}
+    $('f').hidden = true;
+    if (data && data.analysis && data.analysis.endpoint) {
+      statusEl.appendChild(h('p', { class: 'hint', text: 'A saved copy of one analysis. To analyze other endpoints, run /repo-visualizer:visualize-live.' }));
+      var ep0 = data.analysis.endpoint, job0 = { id: 'static', endpoint: ep0.method + ' ' + ep0.path, stage: 'done', status: data.status || 'done', cached: false, result: { analysis: data.analysis, status: data.status || 'done', rerun: !!data.rerun } };
+      show(job0, true); remember(job0);
+    } else statusEl.appendChild(h('p', { class: 'err', text: 'The embedded analysis could not be read.' }));
+  }
+  else if (!TOKEN) fail('This page needs the link printed by serve.py (it contains the session token). Open that link.');
+  else if (PRESET.length) {
+    input.value = PRESET[0];
+    var chain = function (i) { if (i >= PRESET.length) return; start(PRESET[i], false, null, function () { chain(i + 1); }); };
+    chain(0);
+  }
+})();
+</script>
+</body>
+</html>

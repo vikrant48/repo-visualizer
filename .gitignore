@@ -1,6 +1,8 @@
 # Output of running the plugin on this repo itself
 /architecture.json
 /architecture.html
+/endpoint-analysis.json
+/endpoint-analysis.html
 
 # OS / editor
 .DS_Store

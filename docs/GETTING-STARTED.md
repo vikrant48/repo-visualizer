@@ -112,24 +112,32 @@ Double-click `architecture.html` in your project folder, or open it in any brows
 
 ## Step 5: Go deeper on one thing
 
-For a single endpoint or service, add it after the command:
+**One service:** add its name after the command.
 
 ```
-/repo-visualizer:visualize "POST /login"
 /repo-visualizer:visualize billing-service
 ```
 
-- An HTTP method plus path (or a path starting with `/`) focuses on that endpoint's full request and response journey.
-- Anything else is treated as a service or component name.
-- Each run **overwrites** the previous `architecture.html` and `architecture.json`. Copy them elsewhere first if you want to keep an old one.
+The overview then shows that service, what it connects to, and the gateway in front of it. Each run **overwrites** the previous `architecture.html` and `architecture.json`. Copy them elsewhere first if you want to keep an old one.
 
-On large projects (more than about 500 files, or three or more services), Claude first builds the overview from your infrastructure files, then traces the 5 most important flows. Use the focused forms above to see others.
+**One endpoint** has its own commands. Nothing is pre-traced: you type the endpoint, Claude analyzes it, a separate read-only run verifies it, and then it is shown.
+
+```
+/repo-visualizer:endpoint "POST /api/login"
+/repo-visualizer:visualize-live
+```
+
+- `/repo-visualizer:endpoint "POST /api/login"` analyzes that one endpoint without a server. It prints a summary in the terminal (scenarios with their status codes, how many items are verified, corrected, or unverified, and what needs attention), writes `endpoint-analysis.json` and `endpoint-analysis.html` to your project root, and opens the page in your browser. It can take several minutes. If several routes match it asks you to pick one.
+- `/repo-visualizer:visualize-live` starts a local viewer (on your own machine only) and opens it. Type any endpoint (`POST /api/login`, `/api/login`, `login`, or a handler name), watch the progress (Locating, Analyzing, Verifying), then browse the scenarios as tabs with the request keys, the animated journey, and the response keys. Click a badge (verified, corrected, unverified) to see the exact code that backs it, or use **Compare scenarios** to see where two paths split, such as cache hit versus miss. Asking again for the same endpoint is instant until your code changes; **Re-analyze** runs it again anyway.
+- Both need Python and the `claude` program on your PATH, because the analysis runs headless Claude Code with read-only tools in your project folder.
+
+On large projects (more than about 500 files, or three or more services), the overview is built from your infrastructure files first, then Claude traces the 5 most important flows. Use the service and endpoint forms above to see more.
 
 ## Good to know
 
 - **It reflects what Claude could trace in your code.** Treat it as a well-evidenced starting point, not a guarantee. Dynamic behavior (reflection, runtime config) can hide connections. Check the *Uncertain* tab.
 - **Privacy:** analysis happens in your Claude Code session. Secrets are never copied into the output, only variable *names*, and Claude is told not to read real `.env` files (it uses `.env.example` style files). The page contains your architecture, so share it as carefully as your source code.
-- **Git:** consider adding `architecture.html` and `architecture.json` to your project's `.gitignore`, or commit them deliberately as documentation.
+- **Git:** consider adding `architecture.html`, `architecture.json`, `endpoint-analysis.html` and `endpoint-analysis.json` to your project's `.gitignore`, or commit them deliberately as documentation.
 
 ## Updating
 
